@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#075E54">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="manifest" href="manifest.json">
+
+    <title>SmartLoc - Locataires & Contrats</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <script>
+        (function() {
+            const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+            const currentPage = window.location.pathname.split("/").pop() || "index.html";
+
+            if (!auth) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Restriction pour les agents
+            if (auth.role === 'agent') {
+                const authorizedPages = ['index.html', 'paiements.html'];
+                if (!authorizedPages.includes(currentPage)) {
+                    alert("Accès Refusé : Vous n'avez pas les permissions pour accéder à cette page.");
+                    window.location.href = 'index.html';
+                }
+            }
+        })();
+
+        function logout() {
+            localStorage.removeItem('smartloc_auth');
+            window.location.href = 'login.html';
+        }
+    </script>
+
+    <style>
+        :root {
+            --wa-dark-green: #075E54;
+            --wa-teal: #128C7E;
+            --wa-light-green: #25D366;
+            --wa-bg: #F0F2F5;
+            --shadow: 0 8px 30px rgba(0,0,0,0.05);
+        }
+
+        body {
+            background-color: var(--wa-bg);
+            font-family: 'Roboto', sans-serif;
+            color: #333;
+        }
+
+        .navbar-custom {
+            background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal));
+            color: white;
+            padding: 0.8rem 1rem;
+            border-bottom: 3px solid var(--wa-light-green);
+        }
+
+        .company-logo {
+            max-height: 55px;
+            border-radius: 12px;
+            margin-right: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            background: white;
+        }
+
+        .company-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            letter-spacing: 0.5px;
+            color: #FFFFFF;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            line-height: 1.2;
+        }
+
+        .page-subtitle {
+            font-family: 'Roboto', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: block;
+            opacity: 0.9;
+        }
+
+        .card {
+            border: none;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 25px;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+
+        .card-header {
+            background-color: white;
+            color: var(--wa-dark-green);
+            border-bottom: 1px solid #edf2f7;
+            padding: 1.2rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+
+        .card-header i {
+            color: var(--wa-teal);
+            margin-right: 10px;
+        }
+
+        .form-label {
+            font-weight: 700 !important;
+            color: #333;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control, .form-select {
+            border-radius: 10px;
+            padding: 0.6rem 1rem;
+            border: 1px solid #e2e8f0;
+            background-color: #fcfcfc;
+        }
+
+        .info-locked {
+            font-weight: bold !important;
+            color: #007bff !important;
+            background-color: #f0f7ff !important;
+        }
+
+        .editing-mode {
+            color: #dc3545 !important;
+            border-color: #dc3545 !important;
+            background-color: #fff5f5 !important;
+        }
+
+        .btn-whatsapp {
+            background: linear-gradient(to right, var(--wa-light-green), #1eb954);
+            color: white;
+            border-radius: 12px;
+            font-weight: 600;
+            padding: 12px 30px;
+            border: none;
+        }
+
+        footer {
+            background: white;
+            color: #6c757d;
+            font-size: 0.85rem;
+            border-top: 1px solid #dee2e6;
+            margin-top: 50px;
+        }
+
+        #table-tenants-container {
+            display: none;
+        }
+
+        .pin-display {
+            font-family: monospace;
+            font-size: 1.2rem;
+            letter-spacing: 3px;
+            color: var(--wa-teal);
+            font-weight: bold;
+        }
+
+        .toast-success-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); display: flex; align-items: center;
+            justify-content: center; z-index: 9999; animation: fadeIn 0.3s ease;
+        }
+        .toast-success-message {
+            background: rgba(37, 211, 102, 0.95); color: white; padding: 25px 50px;
+            border-radius: 20px; text-align: center; font-size: 1.4rem; font-weight: bold;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3); animation: slideDown 0.3s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideDown { from { transform: translateY(-50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark navbar-custom shadow-sm">
+    <div class="container">
+        <div class="d-flex align-items-center">
+            <img src="https://via.placeholder.com/150x150?text=LOGO" alt="Logo" id="header-logo-display" class="company-logo">
+            <div class="d-flex flex-column">
+                <span class="company-name" id="header-name-display">SmartLoc</span>
+                <span class="page-subtitle">Locataires & Contrats</span>
+            </div>
+        </div>
+        
+        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto align-items-center" id="nav-elements">
+                <li class="nav-item"><a class="nav-link text-white px-3" href="index.html"><i class="fas fa-chart-line me-1"></i> Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="paiements.html"><i class="fas fa-money-bill-wave me-1"></i> Paiements</a></li>
+                <li class="nav-item admin-only"><a class="nav-link text-white px-3" href="recherche.html"><i class="fas fa-search me-1"></i> Recherche</a></li>
+                <li class="nav-item admin-only"><a class="nav-link text-white px-3" href="contrats.html"><i class="fas fa-file-contract me-1"></i> Biens</a></li>
+                <li class="nav-item admin-only"><a class="nav-link text-white active fw-bold px-3" href="contrat_locataires.html"><i class="fas fa-users me-1"></i> Locataires</a></li>
+                <li class="nav-item admin-only"><a class="nav-link text-white px-3" href="comptabilite.html"><i class="fas fa-wallet me-1"></i> Compta</a></li>
+                <li class="nav-item admin-only"><a class="nav-link text-white px-3" href="documents.html"><i class="fas fa-print me-1"></i> Documents</a></li>
+                <li class="nav-item admin-only"><a class="nav-link text-white px-3" href="config.html"><i class="fas fa-cog me-1"></i> Config</a></li>
+                <li class="nav-item ms-lg-3">
+                    <button class="btn btn-outline-light btn-sm rounded-pill px-3" onclick="logout()">
+                        <i class="fas fa-sign-out-alt me-1"></i> Quitter
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            
+            <div class="card">
+                <div class="card-header"><i class="fas fa-user-plus"></i> <span id="form-title">Nouveau Locataire</span></div>
+                <div class="card-body p-4">
+                    <div class="row g-3">
+                        <input type="hidden" id="edit-tenant-id" value="">
+                        
+                        <div class="col-md-6">
+                            <label class="form-label">Nom et Prénoms</label>
+                            <input type="text" id="tenant-name" class="form-control" placeholder="Ex: AMOUSSOU Clarence" disabled>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Fonction / Profession</label>
+                            <input type="text" id="tenant-job" class="form-control" placeholder="Ex: Comptable" disabled>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Téléphone</label>
+                            <input type="tel" id="tenant-tel" class="form-control" placeholder="Numéro contact" disabled>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Filtrer par Localisation</label>
+                            <select id="filter-location" class="form-select" onchange="filterOwnersByLocation()" disabled>
+                                <option value="">Toutes les zones...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Propriétaire</label>
+                            <select id="filter-owner" class="form-select" onchange="filterHousesByOwner()" disabled>
+                                <option value="">Choisir un propriétaire...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Maison / Bien spécifique</label>
+                            <select id="filter-house" class="form-select" onchange="updateHouseDescriptionDisplay()" disabled>
+                                <option value="">Choisir la maison...</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-12">
+                            <label class="form-label">Description du bien sélectionné</label>
+                            <input type="text" id="house-description-display" class="form-control bg-light" placeholder="Description automatique..." readonly disabled>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Jour d'intégration</label>
+                            <input type="date" id="tenant-entry-date" class="form-control" disabled>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Avance sur loyer (F CFA)</label>
+                            <input type="number" id="tenant-advance" class="form-control" placeholder="Montant versé" disabled>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Code Confidentiel (Validation)</label>
+                            <div class="input-group">
+                                <input type="text" id="tenant-pin" class="form-control pin-display" readonly disabled>
+                                <button class="btn btn-outline-secondary" type="button" onclick="generatePIN()" id="btn-gen-pin" disabled>Générer</button>
+                            </div>
+                        </div>
+
+                        <div class="col-md-3 text-end d-flex align-items-end justify-content-end">
+                            <button class="btn btn-teal text-white fw-bold w-100" style="background-color: var(--wa-teal); border-radius: 10px; padding: 10px;" onclick="handleTenantAction()" disabled id="btn-save-tenant">
+                                <i class="fas fa-save me-1"></i> <span id="btn-tenant-text">ENREGISTRER</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
+                    <div class="mb-2 mb-md-0"><i class="fas fa-list-ul"></i> Liste des Locataires actifs</div>
+                    <div class="d-flex gap-2 align-items-center">
+                        <div class="input-group input-group-sm" style="max-width: 250px;">
+                            <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
+                            <input type="text" id="search-tenant" class="form-control border-start-0" placeholder="Rechercher un locataire..." onkeyup="searchTenants()">
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="toggleTenantsTable()" id="btn-toggle-tenants">Afficher la liste</button>
+                    </div>
+                </div>
+                <div class="card-body p-0" id="table-tenants-container">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">Locataire</th>
+                                    <th>Propriétaire / Zone</th>
+                                    <th>Bien occupé</th>
+                                    <th>Intégration</th>
+                                    <th>Loyer</th>
+                                    <th>Avance</th>
+                                    <th>PIN</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tenants-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-lg" style="background: linear-gradient(to right, #fff, #fff5f5);">
+                <div class="card-body p-4 d-md-flex align-items-center justify-content-between">
+                    <div class="mb-3 mb-md-0">
+                        <h5 class="fw-bold mb-1 text-danger"><i class="fas fa-lock me-2"></i>Protection des données</h5>
+                        <p class="small text-muted mb-0">Accès restreint à l'administration</p>
+                    </div>
+                    <div id="lock-action-area">
+                        <button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()">
+                            <i class="fas fa-unlock me-2"></i> DÉVERROUILLER
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<footer class="text-center py-5">
+    <div class="container">
+        <p class="mb-2 fw-bold text-dark">SmartLoc <span style="color:var(--wa-teal)">Agencies</span></p>
+        <p class="mb-1">Concepteur : <strong>Atizoun Plateny AMOUSSOU</strong></p>
+        <div class="mt-3 small opacity-50">&copy; 2026 - Tous droits réservés</div>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let masterCode = "1234";
+    let owners = [];
+    let houses = [];
+    let tenants = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+        checkNavPermissions();
+        syncData();
+        loadBranding();
+        initFilters();
+        renderTenants();
+        lockAllFields();
+    });
+
+    function showSuccessMessage(message) {
+        const overlay = document.createElement('div');
+        overlay.className = 'toast-success-overlay';
+        overlay.innerHTML = `<div class="toast-success-message"><i class="fas fa-check-circle me-2"></i>${message}</div>`;
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.remove(), 2000);
+    }
+
+    function checkNavPermissions() {
+        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+        if (auth && auth.role === 'agent') {
+            document.querySelectorAll('.admin-only').forEach(el => el.style.setProperty('display', 'none', 'important'));
+        }
+    }
+
+    function syncData() {
+        owners = JSON.parse(localStorage.getItem('smartloc_owners')) || [];
+        houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
+        tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
+        masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
+    }
+
+    function loadBranding() {
+        const data = JSON.parse(localStorage.getItem('smartloc_company'));
+        const logo = localStorage.getItem('smartloc_logo');
+        if(data) document.getElementById('header-name-display').innerText = (data.name || "SmartLoc");
+        if(logo) document.getElementById('header-logo-display').src = logo;
+    }
+
+    function initFilters() {
+        syncData();
+        const locSelect = document.getElementById('filter-location');
+        const uniqueLocations = [...new Set(houses.map(h => h.location))];
+        locSelect.innerHTML = '<option value="">Toutes les zones...</option>';
+        uniqueLocations.forEach(loc => {
+            locSelect.innerHTML += `<option value="${loc}">${loc}</option>`;
+        });
+    }
+
+    function filterOwnersByLocation() {
+        syncData();
+        const loc = document.getElementById('filter-location').value;
+        const ownerSelect = document.getElementById('filter-owner');
+        ownerSelect.innerHTML = '<option value="">Choisir un propriétaire...</option>';
+        const filteredHouses = loc ? houses.filter(h => h.location === loc) : houses;
+        const validOwnerIds = [...new Set(filteredHouses.map(h => String(h.ownerId)))];
+        
+        owners.filter(o => validOwnerIds.includes(String(o.id))).forEach(o => {
+            ownerSelect.innerHTML += `<option value="${o.id}">${o.name || o.designation}</option>`;
+        });
+        filterHousesByOwner();
+    }
+
+    function filterHousesByOwner() {
+        syncData();
+        const ownerId = document.getElementById('filter-owner').value;
+        const loc = document.getElementById('filter-location').value;
+        const houseSelect = document.getElementById('filter-house');
+        const editId = document.getElementById('edit-tenant-id').value;
+        
+        houseSelect.innerHTML = '<option value="">Choisir la maison...</option>';
+        document.getElementById('house-description-display').value = "";
+
+        if(!ownerId) return;
+        
+        let filtered = houses.filter(h => String(h.ownerId) === String(ownerId));
+        if(loc) filtered = filtered.filter(h => h.location === loc);
+        
+        filtered.forEach(h => {
+            let unitsList = [];
+            try { unitsList = JSON.parse(h.units); } catch(e) { unitsList = []; }
+            unitsList.forEach(u => {
+                const isOccupied = tenants.some(t => String(t.houseId) === String(h.id) && t.specificUnit === u.name && String(t.id) !== String(editId));
+                const optionValue = `${h.id}|${u.name}|${u.price}`;
+                const optionText = isOccupied ? `${u.name} - OCCUPÉ` : `${u.name} (${u.price} F)`;
+                const option = document.createElement('option');
+                option.value = optionValue; option.textContent = optionText;
+                if(isOccupied) { option.style.color = "red"; option.disabled = true; }
+                houseSelect.appendChild(option);
+            });
+        });
+    }
+
+    function updateHouseDescriptionDisplay() {
+        const houseValue = document.getElementById('filter-house').value;
+        const display = document.getElementById('house-description-display');
+        if(!houseValue) { display.value = ""; return; }
+        const [houseId] = houseValue.split('|');
+        const house = houses.find(h => String(h.id) === String(houseId));
+        display.value = house ? (house.description || "Aucune description") : "";
+    }
+
+    function generatePIN() {
+        const pin = Math.floor(1000 + Math.random() * 9000);
+        document.getElementById('tenant-pin').value = pin;
+    }
+
+    function handleTenantAction() {
+        const editId = document.getElementById('edit-tenant-id').value;
+        if (editId) updateTenant(editId); else addTenant();
+    }
+
+    function addTenant() {
+        const name = document.getElementById('tenant-name').value;
+        const houseData = document.getElementById('filter-house').value;
+        const pin = document.getElementById('tenant-pin').value;
+        if(!name || !houseData || !pin) return alert("Veuillez remplir les informations obligatoires");
+        
+        const [houseId, unitName, unitPrice] = houseData.split('|');
+        const tenant = { 
+            id: Date.now().toString(), 
+            name, 
+            job: document.getElementById('tenant-job').value, 
+            tel: document.getElementById('tenant-tel').value, 
+            entryDate: document.getElementById('tenant-entry-date').value, 
+            advance: parseFloat(document.getElementById('tenant-advance').value || 0), 
+            houseId: String(houseId), specificUnit: unitName, pin: String(pin), monthlyRent: parseFloat(unitPrice) 
+        };
+        tenants.push(tenant);
+        saveData();
+        resetTenantForm();
+        showSuccessMessage("Locataire enregistré avec succès !");
+    }
+
+    function editTenant(id) {
+        const pin = prompt("Code Administrateur requis pour modifier :");
+        if(pin !== masterCode) return alert("Action refusée.");
+
+        const t = tenants.find(x => String(x.id) === String(id));
+        if(!t) return;
+
+        document.getElementById('edit-tenant-id').value = t.id;
+        
+        // Charger les champs texte/date
+        const fields = ['tenant-name', 'tenant-job', 'tenant-tel', 'tenant-entry-date', 'tenant-advance', 'tenant-pin'];
+        fields.forEach(fId => {
+            const el = document.getElementById(fId);
+            const dataKey = fId.replace('tenant-', '');
+            el.value = t[dataKey] || "";
+            el.classList.add('editing-mode');
+        });
+
+        // Charger la logique des filtres (Localisation -> Propriétaire -> Bien)
+        const house = houses.find(h => String(h.id) === String(t.houseId));
+        if(house) {
+            document.getElementById('filter-location').value = house.location;
+            filterOwnersByLocation();
+            document.getElementById('filter-owner').value = house.ownerId;
+            filterHousesByOwner();
+            document.getElementById('filter-house').value = `${t.houseId}|${t.specificUnit}|${t.monthlyRent}`;
+            updateHouseDescriptionDisplay();
+        }
+
+        document.getElementById('form-title').innerText = "Modifier Locataire (Mode Édition)";
+        document.getElementById('btn-tenant-text').innerText = "METTRE À JOUR";
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function updateTenant(id) {
+        const index = tenants.findIndex(x => String(x.id) === String(id));
+        const houseData = document.getElementById('filter-house').value;
+        if(index === -1) return;
+        
+        if(!houseData) return alert("Veuillez sélectionner à nouveau le bien occupé.");
+
+        const [houseId, unitName, unitPrice] = houseData.split('|');
+        tenants[index] = {
+            ...tenants[index],
+            name: document.getElementById('tenant-name').value,
+            job: document.getElementById('tenant-job').value,
+            tel: document.getElementById('tenant-tel').value,
+            entryDate: document.getElementById('tenant-entry-date').value,
+            advance: parseFloat(document.getElementById('tenant-advance').value || 0),
+            houseId: String(houseId),
+            specificUnit: unitName,
+            pin: String(document.getElementById('tenant-pin').value),
+            monthlyRent: parseFloat(unitPrice)
+        };
+        saveData();
+        resetTenantForm();
+        showSuccessMessage("Mise à jour effectuée !");
+    }
+
+    function deleteTenant(id) {
+        const pin = prompt("Confirmez la suppression avec le Code Administrateur :");
+        if(pin === masterCode) {
+            tenants = tenants.filter(x => String(x.id) !== String(id));
+            saveData();
+            showSuccessMessage("Locataire supprimé de la base.");
+        } else {
+            alert("Code erroné.");
+        }
+    }
+
+    function saveData() {
+        localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
+        renderTenants();
+    }
+
+    function resetTenantForm() {
+        document.getElementById('edit-tenant-id').value = "";
+        const fields = ['tenant-name', 'tenant-job', 'tenant-tel', 'tenant-entry-date', 'tenant-advance', 'tenant-pin'];
+        fields.forEach(fId => {
+            const el = document.getElementById(fId);
+            el.value = "";
+            el.classList.remove('editing-mode');
+        });
+        document.getElementById('form-title').innerText = "Nouveau Locataire";
+        document.getElementById('btn-tenant-text').innerText = "ENREGISTRER";
+        document.getElementById('filter-location').selectedIndex = 0;
+        document.getElementById('filter-owner').innerHTML = '<option value="">Choisir un propriétaire...</option>';
+        document.getElementById('filter-house').innerHTML = '<option value="">Choisir la maison...</option>';
+        document.getElementById('house-description-display').value = "";
+    }
+
+    function renderTenants(filteredData = null) {
+        syncData();
+        const dataToRender = filteredData || tenants;
+        const tbody = document.getElementById('tenants-list');
+        tbody.innerHTML = "";
+        dataToRender.forEach(t => {
+            const house = houses.find(h => String(h.id) === String(t.houseId));
+            const owner = house ? owners.find(o => String(o.id) === String(house.ownerId)) : null;
+            // Formatage date simple si existante
+            const entryDate = t.entryDate ? new Date(t.entryDate).toLocaleDateString('fr-FR') : '-';
+            
+            tbody.innerHTML += `
+                <tr>
+                    <td class="ps-4"><div class="fw-bold">${t.name}</div><small>${t.tel}</small></td>
+                    <td><div class="small fw-bold">${owner ? (owner.name || owner.designation) : 'Inconnu'}</div><span class="badge bg-white text-muted border">${house ? house.location : '-'}</span></td>
+                    <td><small>${t.specificUnit}</small></td>
+                    <td><small class="fw-bold text-muted">${entryDate}</small></td>
+                    <td><span class="fw-bold text-primary">${(t.monthlyRent || 0).toLocaleString()} F</span></td>
+                    <td><span class="fw-bold text-success">${(t.advance || 0).toLocaleString()} F</span></td>
+                    <td><span class="badge bg-light text-dark border">${t.pin}</span></td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary border-0 me-1" onclick="editTenant('${t.id}')"><i class="fas fa-edit"></i></button>
+                        <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteTenant('${t.id}')"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>`;
+        });
+    }
+
+    function searchTenants() {
+        const query = document.getElementById('search-tenant').value.toLowerCase();
+        const filtered = tenants.filter(t => t.name.toLowerCase().includes(query) || t.tel.includes(query));
+        renderTenants(filtered);
+    }
+
+    function toggleTenantsTable() {
+        const container = document.getElementById('table-tenants-container');
+        const btn = document.getElementById('btn-toggle-tenants');
+        const isHidden = (container.style.display === "none" || container.style.display === "");
+        container.style.display = isHidden ? "block" : "none";
+        btn.innerText = isHidden ? "Masquer la liste" : "Afficher la liste";
+    }
+
+    function lockAllFields() {
+        const elements = document.querySelectorAll('input:not([type="hidden"]), select, button:not(.navbar-toggler):not(.nav-link):not([onclick="logout()"]):not(#btn-toggle-tenants)');
+        elements.forEach(el => {
+            if(el.id !== "unlock-trigger-btn" && el.id !== "search-tenant") {
+                el.disabled = true;
+                if(el.tagName === 'INPUT' || el.tagName === 'SELECT') el.classList.add('info-locked');
+            }
+        });
+        document.getElementById('lock-action-area').innerHTML = `<button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()"><i class="fas fa-unlock me-2"></i> DÉVERROUILLER</button>`;
+    }
+
+    function unlockProcess() {
+        const code = prompt("Entrez le code PIN Administrateur :");
+        if(String(code) === String(masterCode)) {
+            document.querySelectorAll('input:not([type="hidden"]), select, button').forEach(el => {
+                if(el.id !== "house-description-display") el.disabled = false;
+                el.classList.remove('info-locked');
+            });
+            document.getElementById('lock-action-area').innerHTML = `<button class="btn btn-whatsapp btn-lg" onclick="saveAndLock()"><i class="fas fa-save me-2"></i> SAUVEGARDER & VERROUILLER</button>`;
+            showSuccessMessage("ACCÈS AUTORISÉ");
+        } else { alert("Code incorrect."); }
+    }
+
+    function saveAndLock() { 
+        lockAllFields(); 
+        showSuccessMessage("SYSTÈME VERROUILLÉ"); 
+    }
+</script>
+
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker enregistré !'))
+            .catch(err => console.log('Erreur SW:', err));
+        });
+    }
+</script>
+
+</body>
+</html>

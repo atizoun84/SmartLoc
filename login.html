@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartLoc - Connexion</title>
+    
+    <meta name="theme-color" content="#075E54">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192?text=SmartLoc">
+    <link rel="manifest" href="manifest.json">
+
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        :root {
+            --wa-dark-green: #075E54;
+            --wa-teal: #128C7E;
+            --wa-light-green: #25D366;
+            --bg-gradient: linear-gradient(180deg, #F0F2F5 0%, #e2e8f0 100%);
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: var(--bg-gradient);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+        }
+
+        .login-card {
+            background: white;
+            padding: 40px;
+            border-radius: 25px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid rgba(0,0,0,0.05);
+            text-align: center;
+        }
+
+        .brand-logo {
+            font-family: 'Playfair Display', serif;
+            color: var(--wa-dark-green);
+            font-weight: 700;
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+
+        .dynamic-logo {
+            max-height: 80px;
+            margin-bottom: 15px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .brand-sub {
+            color: var(--wa-teal);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+            display: block;
+        }
+
+        .btn-login {
+            background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal));
+            border: none;
+            color: white;
+            font-weight: 600;
+            padding: 12px;
+            border-radius: 12px;
+            transition: all 0.3s;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(18, 140, 126, 0.3);
+            color: white;
+        }
+
+        .form-control, .form-select {
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            background-color: #f8fafc;
+        }
+
+        .input-group-text {
+            border-radius: 0 12px 12px 0;
+            background: #f8fafc;
+            cursor: pointer;
+            border-left: none;
+        }
+
+        .password-field {
+            border-right: none;
+        }
+
+        footer {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            font-size: 0.75rem;
+            color: #6c757d;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div id="logo-container">
+            <div class="brand-logo" id="display-brand-name">
+                <i class="bi bi-house-lock-fill me-2"></i>SmartLoc
+            </div>
+        </div>
+        <span class="brand-sub">Gestion Immobilière</span>
+        
+        <form id="loginForm" class="text-start">
+            <div class="mb-3">
+                <label class="form-label fw-bold small">Rôle Utilisateur</label>
+                <select id="userRole" class="form-select" required>
+                    <option value="">Sélectionnez un profil</option>
+                    <option value="pdg">PDG / Administrateur</option>
+                    </select>
+            </div>
+            <div class="mb-4">
+                <label class="form-label fw-bold small">Code d'accès</label>
+                <div class="input-group">
+                    <input type="password" id="password" class="form-control password-field" placeholder="••••" required>
+                    <span class="input-group-text" onclick="togglePassword()">
+                        <i class="bi bi-eye" id="toggleIcon"></i>
+                    </span>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-login w-100">
+                S'AUTHENTIFIER
+            </button>
+            <div id="errorMsg" class="text-danger small mt-3 text-center d-none">
+                <i class="bi bi-exclamation-circle me-1"></i> Code incorrect pour ce profil.
+            </div>
+        </form>
+    </div>
+
+    <footer>
+        Concepteur : Atizoun Plateny AMOUSSOU &copy; 2026
+    </footer>
+
+    <script>
+        // --- ENREGISTREMENT SERVICE WORKER (PWA) ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('PWA: Service Worker enregistré.'))
+                    .catch(err => console.log('PWA: Échec enregistrement SW', err));
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            localStorage.removeItem('smartloc_auth');
+            loadAgencyData();
+            loadRoles();
+        });
+
+        function loadAgencyData() {
+            const companyData = JSON.parse(localStorage.getItem('smartloc_company'));
+            const logoData = localStorage.getItem('smartloc_logo');
+            const brandContainer = document.getElementById('logo-container');
+            const brandName = document.getElementById('display-brand-name');
+
+            if (companyData && companyData.name) {
+                brandName.innerHTML = `<i class="bi bi-house-lock-fill me-2"></i>${companyData.name}`;
+            }
+
+            if (logoData) {
+                const img = document.createElement('img');
+                img.src = logoData;
+                img.alt = "Logo Agence";
+                img.className = "dynamic-logo";
+                brandContainer.prepend(img);
+            }
+        }
+
+        function loadRoles() {
+            const select = document.getElementById('userRole');
+            const employees = JSON.parse(localStorage.getItem('smartloc_employees')) || [];
+            
+            employees.forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = `emp_${emp.id}`;
+                opt.textContent = `Agent : ${emp.nom}`;
+                select.appendChild(opt);
+            });
+        }
+
+        function togglePassword() {
+            const passInput = document.getElementById('password');
+            const icon = document.getElementById('toggleIcon');
+            if (passInput.type === "password") {
+                passInput.type = "text";
+                icon.classList.replace('bi-eye', 'bi-eye-slash');
+            } else {
+                passInput.type = "password";
+                icon.classList.replace('bi-eye-slash', 'bi-eye');
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const roleValue = document.getElementById('userRole').value;
+            const inputPass = document.getElementById('password').value;
+            const error = document.getElementById('errorMsg');
+            
+            let isAuthenticated = false;
+            let userSession = {};
+
+            const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
+            if (roleValue === "pdg") {
+                if (inputPass === masterCode) {
+                    isAuthenticated = true;
+                    userSession = { role: 'admin', name: 'PDG' };
+                }
+            } 
+            else if (roleValue.startsWith('emp_')) {
+                const empId = roleValue.replace('emp_', '');
+                const employees = JSON.parse(localStorage.getItem('smartloc_employees')) || [];
+                const foundEmp = employees.find(e => String(e.id) === empId);
+                
+                if (foundEmp && inputPass === foundEmp.code) {
+                    isAuthenticated = true;
+                    userSession = { role: 'agent', name: foundEmp.nom };
+                }
+            }
+
+            if (isAuthenticated) {
+                localStorage.setItem('smartloc_auth', JSON.stringify(userSession));
+                window.location.href = "index.html";
+            } else {
+                error.classList.remove('d-none');
+            }
+        });
+    </script>
+</body>
+</html>

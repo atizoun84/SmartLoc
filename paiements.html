@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartLoc - Gestion des Paiements</title>
+    
+    <meta name="theme-color" content="#075E54">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192?text=SmartLoc">
+    <link rel="manifest" href="manifest.json">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <script>
+        (function() {
+            const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+            const currentPage = window.location.pathname.split("/").pop() || "index.html";
+
+            if (!auth) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            if (auth.role === 'agent') {
+                const authorizedPages = ['index.html', 'paiements.html', 'recherche.html'];
+                if (!authorizedPages.includes(currentPage)) {
+                    alert("Accès Refusé : Vous n'avez pas les permissions pour accéder à cette section.");
+                    window.location.href = 'index.html';
+                }
+            }
+        })();
+    </script>
+
+    <style>
+        :root {
+            --wa-dark-green: #075E54;
+            --wa-teal: #128C7E;
+            --wa-light-green: #25D366;
+            --wa-bg: #F0F2F5;
+            --shadow: 0 8px 30px rgba(0,0,0,0.08);
+        }
+
+        body { background-color: var(--wa-bg); font-family: 'Roboto', sans-serif; color: #333; }
+        
+        .navbar-custom {
+            background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal));
+            color: white;
+            padding: 0.8rem 1rem;
+            border-bottom: 3px solid var(--wa-light-green);
+        }
+        .company-logo {
+            max-height: 55px;
+            border-radius: 12px;
+            margin-right: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            background: white;
+        }
+        .company-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            letter-spacing: 0.5px;
+            color: #FFFFFF;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            line-height: 1.1;
+        }
+        .page-subtitle {
+            font-family: 'Roboto', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: block;
+            opacity: 0.9;
+            margin-top: 2px;
+        }
+
+        .search-section { background: white; border-radius: 20px; padding: 25px; box-shadow: var(--shadow); margin-top: -30px; position: relative; z-index: 10; }
+        .tenant-card { border: none; border-radius: 20px; transition: all 0.3s; display: none; overflow: hidden; }
+        
+        .month-selector { max-height: 250px; overflow-y: auto; border: 1px solid #eee; border-radius: 12px; }
+        .month-item { padding: 12px; border-bottom: 1px solid #f8f9fa; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .month-item.paid { background-color: #e9f7ef; color: #1e8449; pointer-events: none; }
+        .month-item.unpaid { background-color: #fef9f9; color: #c0392b; }
+        .month-item.selected { border: 2px solid var(--wa-teal); background-color: #e0f2f1; }
+
+        .modal-content { border-radius: 25px; border: none; overflow: hidden; }
+        .modal-header-pro { background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal)); color: white; padding: 1.5rem; text-align: center; border: none; position: relative; }
+        
+        #search-results { position: absolute; width: 100%; left:0; z-index: 1000; background: white; border-radius: 0 0 15px 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .result-item { padding: 12px 20px; cursor: pointer; border-bottom: 1px solid #eee; }
+        .result-item:hover { background-color: #f8f9fa; }
+        .no-result { padding: 15px; color: #d9534f; text-align: center; font-style: italic; }
+
+        #success-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 9999; backdrop-filter: blur(5px);
+        }
+        .success-circle {
+            width: 100px; height: 100px; background: var(--wa-light-green);
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 50px; margin-bottom: 20px;
+            box-shadow: 0 10px 20px rgba(37, 211, 102, 0.3);
+            animation: scaleUp 0.5s ease-out;
+        }
+        @keyframes scaleUp { from { transform: scale(0); } to { transform: scale(1); } }
+
+        footer {
+            background: white;
+            color: #6c757d;
+            font-size: 0.85rem;
+            border-top: 1px solid #dee2e6;
+            margin-top: 50px;
+        }
+
+        .btn-logout { color: #ffc107 !important; font-weight: bold; }
+        .btn-close-white { filter: invert(1) grayscale(100%) brightness(200%); position: absolute; right: 20px; top: 20px; }
+    </style>
+</head>
+<body>
+
+<div id="success-overlay">
+    <div class="success-circle"><i class="fas fa-check"></i></div>
+    <h2 class="fw-bold text-dark">Paiement Réussi !</h2>
+    <p class="text-muted">La transaction a été enregistrée avec succès.</p>
+</div>
+
+<nav class="navbar navbar-expand-lg navbar-custom shadow-sm pb-5">
+    <div class="container">
+        <div class="d-flex align-items-center">
+            <img src="https://via.placeholder.com/150x150?text=LOGO" alt="Logo" id="header-logo-display" class="company-logo">
+            <div class="d-flex flex-column">
+                <span class="company-name" id="header-name-display">SmartLoc</span>
+                <span class="page-subtitle">Gestion des Paiements</span>
+            </div>
+        </div>
+        <button class="navbar-toggler text-white border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto" id="nav-menu">
+                <li class="nav-item"><a class="nav-link text-white px-3" href="index.html"><i class="fas fa-home me-1"></i> Accueil</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="contrats.html"><i class="fas fa-file-contract me-1"></i> Biens</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="contrat_locataires.html"><i class="fas fa-users me-1"></i> Locataires</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3 fw-bold active" href="paiements.html"><i class="fas fa-money-bill-wave me-1"></i> Paiements</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="comptabilite.html"><i class="fas fa-calculator me-1"></i> Comptabilité</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="recherche.html"><i class="fas fa-search me-1"></i> Recherche</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="config.html"><i class="fas fa-cog me-1"></i> Configuration</a></li>
+                <li class="nav-item"><a class="nav-link btn-logout px-3" href="#" onclick="logout()"><i class="fas fa-sign-out-alt me-1"></i> Quitter</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 search-section shadow">
+            <div class="position-relative">
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text bg-transparent border-end-0"><i class="fas fa-search text-muted"></i></span>
+                    <input type="text" id="search-input" class="form-control border-start-0" placeholder="Rechercher un locataire..." onkeyup="searchTenants()">
+                </div>
+                <div id="search-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tenant-details" class="row mt-4 justify-content-center">
+        <div class="col-md-10">
+            <div class="card tenant-card shadow-lg mb-4" id="main-card">
+                <div class="card-body p-4">
+                    <div class="row align-items-center">
+                        <div class="col-md-7 border-end">
+                            <h3 id="det-name" class="fw-bold text-dark mb-1">---</h3>
+                            <p class="text-muted mb-3"><i class="fas fa-briefcase me-2"></i><span id="det-job">---</span> | <i class="fas fa-phone me-2"></i><span id="det-tel">---</span></p>
+                            
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <label class="small text-muted d-block">Maison / Zone</label>
+                                    <span id="det-house" class="fw-500 text-dark">---</span>
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted d-block">Loyer Mensuel</label>
+                                    <span id="det-rent" class="fw-bold text-primary">0 F CFA</span>
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted d-block">Jour d'intégration</label>
+                                    <span id="det-entry-day" class="fw-bold text-dark">---</span>
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted d-block">Avance Versée</label>
+                                    <span id="det-advance" class="fw-bold text-success">0 F CFA</span>
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted d-block">Équivalence</label>
+                                    <span id="det-advance-months" class="badge bg-light text-dark border">0 mois</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-5 ps-md-4">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-muted">Ancienneté :</span>
+                                <span id="det-duration" class="fw-bold text-dark">0 mois</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-success">Payé :</span>
+                                <span id="det-total-paid" class="fw-bold text-success">0 F CFA</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-3">
+                                <span class="text-danger">Impayé :</span>
+                                <span id="det-total-unpaid" class="fw-bold text-danger">0 F CFA</span>
+                            </div>
+                            <button class="btn btn-teal w-100 text-white fw-bold py-2 shadow-sm mb-2" style="background-color: var(--wa-teal);" onclick="openPaymentModal(false)">
+                                <i class="fas fa-receipt me-2"></i> ENREGISTRER UN PAIEMENT
+                            </button>
+                            <button id="btn-use-advance" class="btn btn-outline-success w-100 fw-bold py-2 shadow-sm" onclick="openPaymentModal(true)">
+                                <i class="fas fa-hand-holding-usd me-2"></i> UTILISER L'AVANCE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="paymentModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header-pro">
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="mb-0" id="modal-tenant-name">Finaliser le Paiement</h5>
+                <p class="small opacity-75 mb-0" id="modal-tenant-info">Sécurisé par SmartLoc Encryption</p>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3 p-3 bg-light rounded-4 border-start border-4 border-teal" style="border-left-color: var(--wa-teal) !important;">
+                    <label class="form-label small fw-bold text-muted mb-1 text-uppercase">Agent Responsable</label>
+                    <p class="mb-0 fw-bold text-dark" id="modal-agent-name">Chargement...</p>
+                </div>
+
+                <div class="mb-3 p-3 bg-light rounded-4 border-start border-4 border-teal" style="border-left-color: var(--wa-teal) !important;">
+                    <label class="form-label small fw-bold text-muted mb-1 text-uppercase">Description du Bien</label>
+                    <p class="mb-0 small text-dark italic" id="modal-house-description" style="font-style: italic;">Chargement de la description...</p>
+                </div>
+
+                <label class="form-label fw-bold">Choisir le(s) mois à régler</label>
+                <div class="month-selector mb-4" id="modal-month-list"></div>
+
+                <div class="row g-2 mb-4">
+                    <div class="col-6">
+                        <div class="p-2 border rounded bg-light">
+                            <small class="text-muted d-block">Déjà payé :</small>
+                            <span id="modal-hist-paid" class="fw-bold text-success" style="font-size: 0.9rem;">0 F (0 mois)</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="p-2 border rounded bg-light">
+                            <small class="text-muted d-block">Non payé :</small>
+                            <span id="modal-hist-unpaid" class="fw-bold text-danger" style="font-size: 0.9rem;">0 F (0 mois)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-light p-3 rounded-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span id="label-payment-type">Total à payer :</span>
+                        <h4 class="mb-0 fw-bold text-dark" id="modal-total-amount">0 F</h4>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted uppercase">Validation Code PIN Locataire</label>
+                    <input type="password" id="confirm-pin" class="form-control form-control-lg text-center fw-bold" maxlength="4" placeholder="****" style="letter-spacing: 10px;" autocomplete="off">
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-lg flex-grow-1 py-3 rounded-4" data-bs-dismiss="modal">ANNULER</button>
+                    <button id="btn-confirm-payment" class="btn btn-success btn-lg flex-grow-1 py-3 rounded-4 shadow" onclick="processPayment()">
+                        CONFIRMER
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="text-center py-5">
+    <div class="container">
+        <p class="mb-2 fw-bold text-dark">SmartLoc <span style="color:var(--wa-teal)">Agencies</span></p>
+        <p class="mb-1">Concepteur : <strong>Atizoun Plateny AMOUSSOU</strong></p>
+        <div class="mt-3 small opacity-50">&copy; 2026 - Tous droits réservés</div>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // --- ENREGISTREMENT SERVICE WORKER (PWA) ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('PWA: Service Worker enregistré.'))
+                .catch(err => console.log('PWA: Échec SW', err));
+        });
+    }
+
+    // --- LOGIQUE DE STOCKAGE UNIFORMISÉE ---
+    let tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
+    let payments = JSON.parse(localStorage.getItem('smartloc_payments')) || [];
+    let houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
+    let currentTenant = null;
+    let selectedMonths = [];
+    let isAdvancePayment = false;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        applyMenuRestrictions();
+        loadBranding();
+        handleUrlParams();
+    });
+
+    function applyMenuRestrictions() {
+        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+        if (auth && auth.role === 'agent') {
+            const authorized = ['index.html', 'paiements.html', 'recherche.html'];
+            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
+                const link = li.querySelector('a');
+                if (link && !link.classList.contains('btn-logout')) {
+                    const href = link.getAttribute('href');
+                    if (!authorized.includes(href)) li.remove();
+                }
+            });
+        }
+    }
+
+    function handleUrlParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tenantSearch = urlParams.get('search');
+        const trigger = localStorage.getItem('smartloc_search_trigger');
+        const pendingId = localStorage.getItem('smartloc_pending_payment_tenant');
+
+        const searchVal = tenantSearch || trigger;
+
+        if (searchVal) {
+            const input = document.getElementById('search-input');
+            input.value = searchVal;
+            searchTenants();
+            
+            setTimeout(() => {
+                let targetTenant = null;
+                if (pendingId) {
+                    targetTenant = tenants.find(t => String(t.id) === String(pendingId));
+                }
+                
+                if (targetTenant) {
+                    selectTenant(targetTenant);
+                } else {
+                    const first = document.querySelector('#search-results .result-item');
+                    if (first) first.click();
+                }
+            }, 300);
+
+            localStorage.removeItem('smartloc_search_trigger');
+            localStorage.removeItem('smartloc_pending_payment_tenant');
+        }
+    }
+
+    function logout() {
+        if(confirm("Voulez-vous vous déconnecter ?")) {
+            localStorage.removeItem('smartloc_auth');
+            window.location.href = 'login.html';
+        }
+    }
+
+    function loadBranding() {
+        const data = JSON.parse(localStorage.getItem('smartloc_company'));
+        const logo = localStorage.getItem('smartloc_logo');
+        if(data) document.getElementById('header-name-display').innerText = data.name;
+        if(logo) document.getElementById('header-logo-display').src = logo;
+    }
+
+    function searchTenants() {
+        const query = document.getElementById('search-input').value.toLowerCase();
+        const resultsDiv = document.getElementById('search-results');
+        resultsDiv.innerHTML = '';
+        if(query.length < 1) return;
+        const filtered = tenants.filter(t => t.name.toLowerCase().includes(query));
+        if(filtered.length === 0) {
+            resultsDiv.innerHTML = '<div class="no-result">Aucun locataire trouvé</div>';
+            return;
+        }
+        filtered.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'result-item';
+            div.innerHTML = `<strong>${t.name}</strong> <br> <small class="text-muted">${t.specificUnit || 'Unité non définie'}</small>`;
+            div.onclick = () => selectTenant(t);
+            resultsDiv.appendChild(div);
+        });
+    }
+
+    function selectTenant(tenant) {
+        currentTenant = tenant;
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('search-input').value = tenant.name;
+        document.getElementById('main-card').style.display = 'block';
+        
+        let monthlyRent = parseFloat(tenant.monthlyRent) || 0;
+        currentTenant.calculatedRent = monthlyRent;
+
+        const entryDate = new Date(tenant.entryDate || new Date());
+        const today = new Date();
+        const diffMonths = Math.max(1, (today.getFullYear() - entryDate.getFullYear()) * 12 + (today.getMonth() - entryDate.getMonth()) + 1);
+        
+        const tenantPayments = payments.filter(p => String(p.tenantId) === String(tenant.id));
+        const totalPaidAmount = tenantPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const totalDue = diffMonths * monthlyRent;
+
+        const house = houses.find(h => String(h.id) === String(tenant.houseId)) || { location: "", description: "Aucune description" };
+        const advance = parseFloat(tenant.advance) || 0;
+        const advMonths = monthlyRent > 0 ? Math.floor(advance / monthlyRent) : 0;
+
+        document.getElementById('det-name').innerText = tenant.name;
+        document.getElementById('det-job').innerText = tenant.job || "---";
+        document.getElementById('det-tel').innerText = tenant.tel || "---";
+        document.getElementById('det-house').innerText = (tenant.specificUnit || "") + (house.location ? " | " + house.location : "");
+        document.getElementById('det-rent').innerText = monthlyRent.toLocaleString('fr-FR') + ' F';
+        document.getElementById('det-entry-day').innerText = entryDate.toLocaleDateString('fr-FR');
+        document.getElementById('det-advance').innerText = advance.toLocaleString('fr-FR') + ' F';
+        document.getElementById('det-advance-months').innerText = advMonths + ' mois';
+        document.getElementById('det-duration').innerText = diffMonths + ' mois';
+        document.getElementById('det-total-paid').innerText = totalPaidAmount.toLocaleString('fr-FR') + ' F';
+        document.getElementById('det-total-unpaid').innerText = Math.max(0, (totalDue - totalPaidAmount)).toLocaleString('fr-FR') + ' F';
+
+        document.getElementById('btn-use-advance').disabled = (advance <= 0 || monthlyRent <= 0);
+        currentTenant.currentHouseDescription = house.description || "Aucune description.";
+    }
+
+    function openPaymentModal(useAdvance) {
+        if(!currentTenant) return;
+        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+        const operatorName = auth ? (auth.name || "Administrateur") : "Inconnu";
+
+        isAdvancePayment = useAdvance;
+        selectedMonths = [];
+        document.getElementById('confirm-pin').value = ""; 
+        
+        document.getElementById('modal-tenant-name').innerText = useAdvance ? "Déduction sur Avance" : "Finaliser le Paiement";
+        document.getElementById('modal-agent-name').innerText = operatorName;
+        document.getElementById('modal-tenant-info').innerText = `${currentTenant.specificUnit} | Loyer: ${currentTenant.calculatedRent.toLocaleString('fr-FR')} F`;
+        document.getElementById('modal-house-description').innerText = currentTenant.currentHouseDescription;
+
+        renderMonthList();
+        const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
+        modal.show();
+    }
+
+    function renderMonthList() {
+        const list = document.getElementById('modal-month-list');
+        list.innerHTML = '';
+        
+        const entryDate = new Date(currentTenant.entryDate || new Date());
+        const today = new Date();
+        const diffMonths = Math.max(1, (today.getFullYear() - entryDate.getFullYear()) * 12 + (today.getMonth() - entryDate.getMonth()) + 1);
+        
+        const tenantPaymentsList = payments.filter(p => String(p.tenantId) === String(currentTenant.id));
+        const tenantPaidKeys = tenantPaymentsList.map(p => p.monthKey);
+        
+        const totalPaidAmount = tenantPaymentsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const totalDue = diffMonths * currentTenant.calculatedRent;
+        
+        document.getElementById('modal-hist-paid').innerText = `${totalPaidAmount.toLocaleString('fr-FR')} F (${tenantPaidKeys.length} mois)`;
+        document.getElementById('modal-hist-unpaid').innerText = `${Math.max(0, totalDue - totalPaidAmount).toLocaleString('fr-FR')} F (${Math.max(0, diffMonths - tenantPaidKeys.length)} mois)`;
+
+        for (let i = 0; i < diffMonths; i++) {
+            let d = new Date(entryDate.getFullYear(), entryDate.getMonth() + i, entryDate.getDate());
+            let monthLabel = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            let monthKey = d.getFullYear() + '-' + (d.getMonth() + 1);
+            let isPaid = tenantPaidKeys.includes(monthKey);
+            
+            let item = document.createElement('div');
+            item.className = `month-item ${isPaid ? 'paid' : 'unpaid'}`;
+            item.innerHTML = `<span>${monthLabel}</span> ${isPaid ? '<i class="fas fa-check-circle"></i>' : '<i class="far fa-circle"></i>'}`;
+            if(!isPaid) item.onclick = () => toggleMonth(item, monthKey);
+            list.appendChild(item);
+        }
+    }
+
+    function toggleMonth(el, key) {
+        if(selectedMonths.includes(key)) {
+            selectedMonths = selectedMonths.filter(m => m !== key);
+            el.classList.remove('selected');
+        } else {
+            if(isAdvancePayment) {
+                const rent = currentTenant.calculatedRent;
+                const advance = parseFloat(currentTenant.advance) || 0;
+                if(selectedMonths.length >= Math.floor(advance / rent)) {
+                    alert("Avance insuffisante.");
+                    return;
+                }
+            }
+            selectedMonths.push(key);
+            el.classList.add('selected');
+        }
+        document.getElementById('modal-total-amount').innerText = (selectedMonths.length * currentTenant.calculatedRent).toLocaleString('fr-FR') + ' F';
+    }
+
+    function processPayment() {
+        const pinInput = document.getElementById('confirm-pin').value;
+        if(!currentTenant.pin || pinInput !== String(currentTenant.pin)) {
+            alert("Code PIN invalide !");
+            return;
+        }
+
+        if(selectedMonths.length === 0) return alert("Sélectionnez au mois un mois.");
+
+        const operator = JSON.parse(localStorage.getItem('smartloc_auth'))?.name || "Admin";
+
+        selectedMonths.forEach(m => {
+            payments.push({
+                id: Date.now() + Math.random(),
+                tenantId: currentTenant.id,
+                monthKey: m,
+                amount: currentTenant.calculatedRent,
+                type: isAdvancePayment ? 'avance_deduction' : 'direct',
+                date: new Date().toISOString(),
+                operator: operator
+            });
+        });
+
+        if(isAdvancePayment) {
+            const deduction = selectedMonths.length * currentTenant.calculatedRent;
+            const idx = tenants.findIndex(t => String(t.id) === String(currentTenant.id));
+            if(idx !== -1) tenants[idx].advance = (parseFloat(tenants[idx].advance) || 0) - deduction;
+            localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
+        }
+
+        localStorage.setItem('smartloc_payments', JSON.stringify(payments));
+        document.getElementById('success-overlay').style.display = 'flex';
+        setTimeout(() => location.reload(), 2000);
+    }
+</script>
+</body>
+</html>

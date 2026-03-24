@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartLoc - Contrats & Biens</title>
+
+    <meta name="theme-color" content="#075E54">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192?text=SmartLoc">
+    <link rel="manifest" href="manifest.json">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <script>
+        (function() {
+            const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+            const currentPage = window.location.pathname.split("/").pop() || "index.html";
+
+            if (!auth) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            if (auth.role === 'agent') {
+                const authorizedPages = ['index.html', 'paiements.html'];
+                if (!authorizedPages.includes(currentPage)) {
+                    alert("Accès Refusé : Vous n'avez pas les permissions pour accéder à la gestion des contrats.");
+                    window.location.href = 'index.html';
+                }
+            }
+        })();
+    </script>
+
+    <style>
+        :root {
+            --wa-dark-green: #075E54;
+            --wa-teal: #128C7E;
+            --wa-light-green: #25D366;
+            --wa-bg: #F0F2F5;
+            --shadow: 0 8px 30px rgba(0,0,0,0.05);
+        }
+
+        body {
+            background-color: var(--wa-bg);
+            font-family: 'Roboto', sans-serif;
+            color: #333;
+        }
+
+        .navbar-custom {
+            background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal));
+            color: white;
+            padding: 0.8rem 1rem;
+            border-bottom: 3px solid var(--wa-light-green);
+        }
+
+        .company-logo {
+            max-height: 55px;
+            border-radius: 12px;
+            margin-right: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            background: white;
+        }
+
+        .company-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            line-height: 1.2;
+            color: #FFFFFF;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .page-subtitle {
+            font-family: 'Roboto', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: block;
+            opacity: 0.9;
+            color: #ffc107;
+        }
+
+        .card {
+            border: none;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 25px;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+
+        .card-header {
+            background-color: white;
+            color: var(--wa-dark-green);
+            border-bottom: 1px solid #edf2f7;
+            padding: 1.2rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+
+        .card-header i {
+            color: var(--wa-teal);
+            margin-right: 10px;
+        }
+
+        .form-label {
+            font-weight: 500;
+            color: #555;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control, .form-select {
+            border-radius: 10px;
+            padding: 0.6rem 1rem;
+            border: 1px solid #e2e8f0;
+            background-color: #fcfcfc;
+        }
+
+        .info-locked {
+            font-weight: bold !important;
+            color: #007bff !important;
+            background-color: #f0f7ff !important;
+        }
+
+        .btn-whatsapp {
+            background: linear-gradient(to right, var(--wa-light-green), #1eb954);
+            color: white;
+            border-radius: 12px;
+            font-weight: 600;
+            padding: 12px 30px;
+            border: none;
+        }
+
+        .btn-logout {
+            color: #ffc107 !important;
+            font-weight: bold;
+        }
+
+        footer {
+            background: white;
+            color: #6c757d;
+            font-size: 0.85rem;
+            border-top: 1px solid #dee2e6;
+            margin-top: 50px;
+        }
+
+        #table-owners-container, #table-houses-container {
+            display: none;
+        }
+
+        .temp-item {
+            background: #e8f5e9;
+            border-radius: 8px;
+            padding: 5px 12px;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        #success-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(7, 94, 84, 0.85);
+            z-index: 10000;
+            color: white;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body>
+
+<div id="success-overlay">
+    <i class="fas fa-check-circle fa-5x mb-3"></i>
+    <h2 class="fw-bold">CONTRAT ENREGISTRÉ</h2>
+    <p>Mise à jour de la liste effectuée.</p>
+</div>
+
+<nav class="navbar navbar-expand-lg navbar-custom shadow-sm">
+    <div class="container">
+        <div class="d-flex align-items-center">
+            <img src="https://via.placeholder.com/150x150?text=LOGO" alt="Logo" id="header-logo-display" class="company-logo">
+            <div class="d-flex flex-column">
+                <span class="company-name" id="header-name-display">SmartLoc</span>
+                <span class="page-subtitle">Biens & Contrats</span>
+            </div>
+        </div>
+        <button class="navbar-toggler text-white border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto" id="nav-menu">
+                <li class="nav-item"><a class="nav-link text-white px-3" href="index.html"><i class="fas fa-home me-1"></i> Accueil</a></li>
+                <li class="nav-item"><a class="nav-link text-white active fw-bold px-3" href="contrats.html"><i class="fas fa-file-contract me-1"></i> Biens</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="contrat_locataires.html"><i class="fas fa-users me-1"></i> Locataires</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="paiements.html"><i class="fas fa-money-bill-wave me-1"></i> Paiements</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="comptabilite.html"><i class="fas fa-calculator me-1"></i> Comptabilité</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="recherche.html"><i class="fas fa-search me-1"></i> Recherche</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="config.html"><i class="fas fa-cog me-1"></i> Paramètres</a></li>
+                <li class="nav-item"><a class="nav-link btn-logout px-3" href="#" onclick="logout()"><i class="fas fa-sign-out-alt me-1"></i> Quitter</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            
+            <div class="card">
+                <div class="card-header"><i class="fas fa-user-tie"></i> Nouveau Propriétaire</div>
+                <div class="card-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nom Complet</label>
+                            <input type="text" id="owner-name" class="form-control" placeholder="Nom du propriétaire" disabled>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">WhatsApp</label>
+                            <input type="tel" id="owner-wa" class="form-control" placeholder="+229..." disabled>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Téléphone Simple</label>
+                            <input type="tel" id="owner-tel" class="form-control" placeholder="Numéro appel" disabled>
+                        </div>
+                        <div class="col-12 text-end">
+                            <button class="btn btn-teal text-white fw-bold" style="background-color: var(--wa-teal); border-radius: 10px;" onclick="addOwner()" disabled id="btn-add-owner">
+                                <i class="fas fa-plus-circle me-1"></i> CRÉER LE PROPRIÉTAIRE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><i class="fas fa-home"></i> Enregistrer les Maisons / Contrat</div>
+                <div class="card-body p-4">
+                    <div class="row g-3">
+                        <input type="hidden" id="edit-house-id">
+                        <div class="col-md-4">
+                            <label class="form-label d-flex justify-content-between">
+                                Propriétaire concerné
+                                <span class="text-danger" style="cursor:pointer; font-size: 0.75rem;" onclick="deleteOwnerFromSelect()" id="owner-delete-link"><i class="fas fa-trash-alt"></i> Supprimer</span>
+                            </label>
+                            <select id="house-owner-select" class="form-select" disabled>
+                                <option value="">Choisir un propriétaire...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Localisation (Ville/Quartier)</label>
+                            <input type="text" id="house-location" class="form-control" placeholder="Ex: Cotonou, Fidjrossè" list="location-suggestions" disabled>
+                            <datalist id="location-suggestions"></datalist>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Description du bien / Détails</label>
+                            <input type="text" id="house-description" class="form-control" placeholder="Ex: Maison à étage, portail vert" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Date de signature (Intégration)</label>
+                            <input type="date" id="contract-date" class="form-control" disabled>
+                        </div>
+
+                        <div class="col-12 bg-light p-3 rounded-4 border">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-6">
+                                    <label class="form-label">Désignation de l'unité (Pièce/Magasin)</label>
+                                    <input type="text" id="temp-unit-name" class="form-control" placeholder="Ex: Boutique A" disabled>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Loyer mensuel (F CFA)</label>
+                                    <input type="number" id="temp-unit-price" class="form-control" placeholder="Ex: 25000" disabled>
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-dark w-100" style="border-radius: 10px;" onclick="addUnitToList()" disabled id="btn-add-unit">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="temp-units-display" class="mt-3">
+                                </div>
+                        </div>
+
+                        <div class="col-md-12 text-end mt-4">
+                            <button class="btn btn-teal text-white fw-bold w-100" style="background-color: var(--wa-teal); border-radius: 10px; padding: 12px;" onclick="handleHouseAction()" disabled id="btn-add-house">
+                                <i class="fas fa-save me-1"></i> <span id="btn-house-text">ENREGISTRER LE CONTRAT FINAL</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-list"></i> Liste des Biens & Propriétaires</span>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="toggleHousesTable()" id="btn-toggle-houses">Afficher la liste</button>
+                </div>
+                <div class="card-body p-0" id="table-houses-container">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">Désignation du bien</th>
+                                    <th>Loyer (F)</th>
+                                    <th>Localisation</th>
+                                    <th>Description</th>
+                                    <th>Propriétaire</th>
+                                    <th>Signature</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="houses-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-lg" style="background: linear-gradient(to right, #fff, #fff5f5);">
+                <div class="card-body p-4 d-md-flex align-items-center justify-content-between">
+                    <div class="mb-3 mb-md-0">
+                        <h5 class="fw-bold mb-1 text-danger"><i class="fas fa-lock me-2"></i>Protection des données</h5>
+                        <p class="small text-muted mb-0">Sécurité active par code PIN</p>
+                    </div>
+                    <div id="lock-action-area">
+                        <button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()">
+                            <i class="fas fa-unlock me-2"></i> DÉVERROUILLER
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<footer class="text-center py-5">
+    <div class="container">
+        <p class="mb-2 fw-bold text-dark">SmartLoc <span style="color:var(--wa-teal)">Agencies</span></p>
+        <p class="mb-1">Concepteur : <strong>Atizoun Plateny AMOUSSOU</strong></p>
+        <div class="mt-3 small opacity-50">&copy; 2026 - Tous droits réservés</div>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // --- ENREGISTREMENT SERVICE WORKER (PWA) ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('PWA: SW enregistré'))
+                .catch(err => console.log('PWA: Échec SW', err));
+        });
+    }
+
+    let masterCode = "1234";
+    let owners = [];
+    let houses = [];
+    let tempUnits = []; 
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+        if (auth && auth.role === 'agent') {
+            const authorized = ['index.html', 'paiements.html'];
+            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
+                const link = li.querySelector('a');
+                if (link && !link.classList.contains('btn-logout')) {
+                    if (!authorized.includes(link.getAttribute('href'))) li.remove();
+                }
+            });
+        }
+
+        syncAllData();
+        loadBranding();
+        updateOwnerSelect();
+        updateLocationDatalist();
+        renderHouses();
+        lockAllFields();
+    });
+
+    function logout() {
+        if(confirm("Quitter la session ?")) {
+            localStorage.removeItem('smartloc_auth');
+            window.location.href = 'login.html';
+        }
+    }
+
+    function syncAllData() {
+        owners = JSON.parse(localStorage.getItem('smartloc_owners')) || [];
+        houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
+        masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
+    }
+
+    function loadBranding() {
+        const data = JSON.parse(localStorage.getItem('smartloc_company'));
+        const logo = localStorage.getItem('smartloc_logo');
+        if(data) document.getElementById('header-name-display').innerText = (data.name || data.designation || "SmartLoc");
+        if(logo) document.getElementById('header-logo-display').src = logo;
+    }
+
+    function addOwner() {
+        const name = document.getElementById('owner-name').value;
+        const wa = document.getElementById('owner-wa').value;
+        const tel = document.getElementById('owner-tel').value;
+
+        if(!name || !wa) return alert("Nom et WhatsApp requis");
+
+        const newOwner = { 
+            id: Date.now().toString(), 
+            name: name, 
+            wa: wa, 
+            tel: tel 
+        };
+        owners.push(newOwner);
+        localStorage.setItem('smartloc_owners', JSON.stringify(owners));
+        
+        updateOwnerSelect();
+        document.getElementById('owner-name').value = "";
+        document.getElementById('owner-wa').value = "";
+        document.getElementById('owner-tel').value = "";
+        showBriefSuccess();
+    }
+
+    function updateOwnerSelect() {
+        syncAllData();
+        const select = document.getElementById('house-owner-select');
+        select.innerHTML = '<option value="">Choisir un propriétaire...</option>';
+        owners.forEach(o => {
+            const oName = (o.name || o.designation || "Inconnu");
+            select.innerHTML += `<option value="${o.id}">${oName}</option>`;
+        });
+    }
+
+    function deleteOwnerFromSelect() {
+        const select = document.getElementById('house-owner-select');
+        const ownerId = select.value;
+        
+        if(!ownerId) return alert("Veuillez d'abord sélectionner un propriétaire dans la liste.");
+        
+        const code = prompt("Code PIN pour supprimer ce propriétaire :");
+        if(String(code) === String(masterCode)) {
+            const isLinked = houses.some(h => String(h.ownerId) === String(ownerId));
+            if(isLinked) {
+                if(!confirm("Ce propriétaire possède des contrats enregistrés. Sa suppression rendra ces contrats orphelins. Continuer ?")) return;
+            }
+
+            owners = owners.filter(o => String(o.id) !== String(ownerId));
+            localStorage.setItem('smartloc_owners', JSON.stringify(owners));
+            updateOwnerSelect();
+            renderHouses();
+            alert("Propriétaire supprimé.");
+        } else {
+            alert("Code incorrect.");
+        }
+    }
+
+    function updateLocationDatalist() {
+        syncAllData();
+        const list = document.getElementById('location-suggestions');
+        const locations = [...new Set(houses.map(h => h.location))];
+        list.innerHTML = locations.map(loc => `<option value="${loc}">`).join('');
+    }
+
+    function addUnitToList() {
+        const name = document.getElementById('temp-unit-name').value;
+        const price = document.getElementById('temp-unit-price').value;
+
+        if(!name || !price) return alert("Indiquez la désignation et le prix");
+
+        tempUnits.push({ name: name, price: parseFloat(price) });
+        document.getElementById('temp-unit-name').value = "";
+        document.getElementById('temp-unit-price').value = "";
+        renderTempUnits();
+    }
+
+    function renderTempUnits() {
+        const container = document.getElementById('temp-units-display');
+        container.innerHTML = tempUnits.map((u, index) => `
+            <div class="temp-item">
+                <span>Désignation : <strong>${u.name || u.designation}</strong> Loyer mensuel : <strong>${u.price.toLocaleString()} F</strong></span>
+                <i class="fas fa-times text-danger" style="cursor:pointer" onclick="removeUnit(${index})"></i>
+            </div>
+        `).join('');
+    }
+
+    function removeUnit(index) {
+        tempUnits.splice(index, 1);
+        renderTempUnits();
+    }
+
+    function handleHouseAction() {
+        const editId = document.getElementById('edit-house-id').value;
+        if (editId) {
+            updateHouse(String(editId));
+        } else {
+            addHouse();
+        }
+    }
+
+    function addHouse() {
+        const ownerId = document.getElementById('house-owner-select').value;
+        const location = document.getElementById('house-location').value;
+        const description = document.getElementById('house-description').value;
+        const sigDate = document.getElementById('contract-date').value;
+
+        if(!ownerId || !location || !sigDate || tempUnits.length === 0) {
+            return alert("Veuillez remplir le propriétaire, la localisation, la date et ajouter au moins un bien");
+        }
+
+        const house = { 
+            id: Date.now().toString(), 
+            ownerId: String(ownerId), 
+            units: JSON.stringify(tempUnits), 
+            location,
+            description,
+            sigDate 
+        };
+
+        houses.push(house);
+        localStorage.setItem('smartloc_houses', JSON.stringify(houses));
+        
+        resetHouseForm();
+        renderHouses();
+        updateLocationDatalist();
+        showBriefSuccess();
+    }
+
+    function showBriefSuccess() {
+        const overlay = document.getElementById('success-overlay');
+        overlay.style.display = "flex";
+        setTimeout(() => { overlay.style.display = "none"; }, 1500);
+    }
+
+    function editHouse(id) {
+        syncAllData();
+        const house = houses.find(h => String(h.id) === String(id));
+        if (!house) return;
+
+        document.getElementById('edit-house-id').value = String(house.id);
+        document.getElementById('house-owner-select').value = String(house.ownerId);
+        document.getElementById('house-location').value = house.location;
+        document.getElementById('house-description').value = house.description || "";
+        document.getElementById('contract-date').value = house.sigDate;
+
+        try {
+            tempUnits = JSON.parse(house.units);
+        } catch(e) {
+            tempUnits = [];
+        }
+        
+        renderTempUnits();
+
+        document.getElementById('btn-house-text').innerText = "METTRE À JOUR LE CONTRAT";
+        window.scrollTo({ top: 400, behavior: 'smooth' });
+    }
+
+    function updateHouse(id) {
+        const index = houses.findIndex(h => String(h.id) === String(id));
+        if (index === -1) return;
+
+        houses[index].ownerId = String(document.getElementById('house-owner-select').value);
+        houses[index].location = document.getElementById('house-location').value;
+        houses[index].description = document.getElementById('house-description').value;
+        houses[index].sigDate = document.getElementById('contract-date').value;
+        houses[index].units = JSON.stringify(tempUnits);
+
+        localStorage.setItem('smartloc_houses', JSON.stringify(houses));
+        resetHouseForm();
+        renderHouses();
+        showBriefSuccess();
+    }
+
+    function resetHouseForm() {
+        document.getElementById('edit-house-id').value = "";
+        document.getElementById('house-location').value = "";
+        document.getElementById('house-description').value = "";
+        document.getElementById('contract-date').value = "";
+        tempUnits = [];
+        renderTempUnits();
+        document.getElementById('btn-house-text').innerText = "ENREGISTRER LE CONTRAT FINAL";
+    }
+
+    function renderHouses() {
+        syncAllData();
+        const tbody = document.getElementById('houses-list');
+        tbody.innerHTML = "";
+        
+        houses.forEach(h => {
+            const owner = owners.find(o => String(o.id) === String(h.ownerId));
+            const ownerName = owner ? (owner.name || owner.designation || "Propriétaire Inconnu") : "Non trouvé";
+            const ownerWa = owner ? owner.wa : "";
+            const houseDesc = h.description || "-";
+            
+            let unitsList = [];
+            try {
+                unitsList = JSON.parse(h.units);
+            } catch(e) {
+                unitsList = [];
+            }
+
+            unitsList.forEach(u => {
+                const uName = (u.name || u.designation || "Unité");
+                const uPrice = Number(u.price).toLocaleString();
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="ps-4 fw-bold text-wrap" style="max-width: 200px;">${uName}</td>
+                        <td class="text-primary fw-bold">${uPrice}</td>
+                        <td>${h.location}</td>
+                        <td class="small">${houseDesc}</td>
+                        <td>${ownerName}<br><small class="text-success">${ownerWa}</small></td>
+                        <td>${h.sigDate}</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-primary border-0 me-1" onclick="editHouse('${h.id}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteHouse('${h.id}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        });
+    }
+
+    function toggleHousesTable() {
+        const container = document.getElementById('table-houses-container');
+        container.style.display = (container.style.display === "none" || container.style.display === "") ? "block" : "none";
+    }
+
+    function lockAllFields() {
+        const elements = document.querySelectorAll('input, select, textarea, button:not(.navbar button):not(.navbar-toggler):not(.btn-sm):not(#btn-toggle-houses)');
+        elements.forEach(el => {
+            if(el.id !== "unlock-trigger-btn") {
+                el.disabled = true;
+                if(['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el.classList.add('info-locked');
+            }
+        });
+        
+        document.getElementById('lock-action-area').innerHTML = `
+            <button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()">
+                <i class="fas fa-unlock me-2"></i> DÉVERROUILLER
+            </button>`;
+        document.getElementById('owner-delete-link').style.display = "none";
+    }
+
+    function unlockProcess() {
+        const code = prompt("Entrez le code PIN :");
+        if(String(code) === String(masterCode)) {
+            document.querySelectorAll('input, select, textarea, button').forEach(el => {
+                el.disabled = false;
+                el.classList.remove('info-locked');
+            });
+            document.getElementById('lock-action-area').innerHTML = `
+                <button class="btn btn-whatsapp btn-lg" onclick="saveAndLock()">
+                    <i class="fas fa-save me-2"></i> SAUVEGARDER & VERROUILLER
+                </button>`;
+            document.getElementById('owner-delete-link').style.display = "inline";
+        } else {
+            alert("Code incorrect.");
+        }
+    }
+
+    function saveAndLock() {
+        lockAllFields();
+        alert("Modifications protégées.");
+    }
+
+    function deleteHouse(id) {
+        const code = prompt("Code PIN pour supprimer :");
+        if(String(code) === String(masterCode)) {
+            houses = houses.filter(h => String(h.id) !== String(id));
+            localStorage.setItem('smartloc_houses', JSON.stringify(houses));
+            renderHouses();
+        }
+    }
+</script>
+</body>
+</html>

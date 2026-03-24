@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartLoc - Documents & Reçus</title>
+    
+    <meta name="theme-color" content="#075E54">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --wa-dark-green: #075E54;
+            --wa-teal: #128C7E;
+            --wa-light-green: #25D366;
+            --wa-bg: #F0F2F5;
+            --shadow: 0 8px 30px rgba(0,0,0,0.08);
+        }
+
+        body { background-color: var(--wa-bg); font-family: 'Roboto', sans-serif; color: #333; }
+        
+        .navbar-custom {
+            background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal));
+            color: white;
+            padding: 0.8rem 1rem;
+            border-bottom: 3px solid var(--wa-light-green);
+        }
+
+        .company-logo { max-height: 55px; border-radius: 12px; margin-right: 15px; background: white; }
+        .company-name { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: #FFFFFF; line-height: 1.2; }
+        
+        .page-subtitle {
+            font-size: 0.75rem;
+            font-family: 'Roboto', sans-serif;
+            font-weight: 400;
+            display: block;
+            opacity: 0.9;
+            letter-spacing: 0.5px;
+            color: #d1d1d1;
+        }
+
+        .page-title {
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin-left: 15px;
+            font-weight: 500;
+        }
+
+        .search-section { background: white; border-radius: 20px; padding: 25px; box-shadow: var(--shadow); margin-top: 20px; position: relative; z-index: 10; }
+        
+        #search-results { position: absolute; width: 100%; left:0; z-index: 1000; background: white; border-radius: 0 0 15px 15px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .result-item { padding: 12px 20px; cursor: pointer; border-bottom: 1px solid #eee; }
+        .result-item:hover { background-color: #f8f9fa; }
+
+        .doc-card { border: none; border-radius: 20px; display: none; background: white; box-shadow: var(--shadow); }
+        
+        .table-payments thead { background: #f8f9fa; color: var(--wa-dark-green); font-size: 0.8rem; text-transform: uppercase; }
+        .payment-row { cursor: pointer; transition: 0.2s; }
+        .payment-row:hover { background-color: #f1f8f6; }
+        .payment-row.selected { background-color: #e0f2f1; border-left: 4px solid var(--wa-teal); }
+
+        #receipt-preview {
+            background: white;
+            padding: 40px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            max-width: 900px;
+            margin: 20px auto;
+            font-family: 'serif';
+        }
+        .receipt-header { border-bottom: 2px solid var(--wa-dark-green); padding-bottom: 15px; margin-bottom: 20px; }
+        .receipt-title { font-family: 'Playfair Display', serif; color: var(--wa-dark-green); font-size: 2rem; text-align: center; text-transform: uppercase; }
+        
+        .signature-box { margin-top: 40px; text-align: right; }
+        .signature-line { border-top: 1px solid #333; width: 200px; display: inline-block; margin-top: 50px; }
+
+        .btn-float-agency {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+            background: linear-gradient(135deg, var(--wa-teal), var(--wa-dark-green));
+            color: white;
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            border: 3px solid white;
+            transition: 0.3s;
+        }
+        .btn-float-agency:hover { transform: scale(1.1); color: white; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea { position: absolute; left: 0; top: 0; width: 100%; font-size: 10pt; }
+            .receipt-title { font-size: 1.5rem; }
+            .no-print { display: none !important; }
+            .table-responsive { overflow: visible !important; }
+        }
+
+        .time-filters .btn-check:checked + .btn-outline-teal {
+            background-color: var(--wa-teal);
+            color: white;
+        }
+        .btn-outline-teal {
+            color: var(--wa-teal);
+            border-color: var(--wa-teal);
+        }
+        .btn-outline-teal:hover {
+            background-color: var(--wa-teal);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark navbar-custom shadow-sm">
+    <div class="container">
+        <div class="d-flex align-items-center">
+            <img src="https://via.placeholder.com/150x150?text=LOGO" id="header-logo-display" class="company-logo">
+            <div class="d-flex flex-column">
+                <span class="company-name" id="header-name-display">SmartLoc</span>
+                <span class="page-subtitle text-uppercase">Documents & Reçus</span>
+            </div>
+            <span class="page-title d-none d-sm-inline-block"><i class="fas fa-calculator me-1"></i>Comptabilité</span>
+        </div>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto" id="main-nav-list">
+                <li class="nav-item"><a class="nav-link text-white px-3" href="index.html"><i class="fas fa-home me-1"></i> Accueil</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="contrats.html"><i class="fas fa-file-contract me-1"></i> Biens</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="contrat_locataires.html"><i class="fas fa-users me-1"></i> Locataires</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="paiements.html"><i class="fas fa-money-bill-wave me-1"></i> Paiements</a></li>
+                <li class="nav-item"><a class="nav-link text-white active fw-bold px-3" href="comptabilite.html"><i class="fas fa-calculator me-1"></i> Comptabilité</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="recherche.html"><i class="fas fa-search me-1"></i> Recherche</a></li>
+                <li class="nav-item"><a class="nav-link text-white px-3" href="config.html"><i class="fas fa-cog me-1"></i> Config</a></li>
+                <li class="nav-item"><a class="nav-link text-warning px-3" href="#" onclick="logout()"><i class="fas fa-sign-out-alt me-1"></i> Quitter</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 search-section shadow">
+            <div class="position-relative">
+                <div class="input-group input-group-lg mb-3">
+                    <span class="input-group-text bg-transparent border-end-0"><i class="fas fa-search text-muted"></i></span>
+                    <input type="text" id="search-input" class="form-control border-start-0" placeholder="Rechercher Locataire ou Propriétaire..." onkeyup="searchGlobal()">
+                </div>
+                <div id="search-results"></div>
+                
+                <div class="input-group input-group-sm mb-3" id="month-search-container" style="display:none;">
+                    <span class="input-group-text bg-light border-end-0"><i class="fas fa-filter text-muted"></i></span>
+                    <input type="text" id="month-search-input" class="form-control border-start-0" placeholder="Filtrer par texte (mois, nom...)" onkeyup="refreshHistory()">
+                </div>
+
+                <div id="agency-time-filters" class="time-filters text-center" style="display:none;">
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <input type="radio" class="btn-check" name="timeFilter" id="filter-all" checked onchange="refreshHistory()">
+                        <label class="btn btn-outline-teal" for="filter-all">Tout</label>
+
+                        <input type="radio" class="btn-check" name="timeFilter" id="filter-day" onchange="refreshHistory()">
+                        <label class="btn btn-outline-teal" for="filter-day">Jour</label>
+
+                        <input type="radio" class="btn-check" name="timeFilter" id="filter-week" onchange="refreshHistory()">
+                        <label class="btn btn-outline-teal" for="filter-week">Semaine</label>
+
+                        <input type="radio" class="btn-check" name="timeFilter" id="filter-month" onchange="refreshHistory()">
+                        <label class="btn btn-outline-teal" for="filter-month">Mois</label>
+
+                        <input type="radio" class="btn-check" name="timeFilter" id="filter-year" onchange="changeTimeFilter('year')">
+                        <label class="btn btn-outline-teal" for="filter-year" onclick="refreshHistory()">Année</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="doc-interface" class="mt-5 doc-card p-4 mb-5">
+        <div class="row">
+            <div class="col-lg-5 border-end">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="fw-bold mb-0" id="history-title">Historique</h5>
+                    <span class="badge bg-teal text-white" id="count-payments" style="background-color: var(--wa-teal)">0</span>
+                </div>
+                <div class="table-responsive" style="max-height: 500px;">
+                    <table class="table table-hover table-payments">
+                        <thead>
+                            <tr>
+                                <th id="th-label">Détails</th>
+                                <th class="text-end">Montant</th>
+                                <th class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="check-all" onclick="toggleAll(this)">
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="payment-history-body"></tbody>
+                    </table>
+                </div>
+                <div class="mt-4 p-3 bg-light rounded-3 text-center">
+                    <p class="small text-muted mb-2">Sélectionnez les lignes pour générer l'état financier.</p>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-dark fw-bold" onclick="generateDocument()"><i class="fas fa-sync me-2"></i> Prévisualiser le Document</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-7 bg-light rounded-end-4 p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold text-muted uppercase mb-0">Prévisualisation</h6>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="printReceipt()"><i class="fas fa-print"></i> Imprimer</button>
+                        <button class="btn btn-sm btn-outline-success" onclick="copyForWhatsApp()"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+                    </div>
+                </div>
+
+                <div id="printArea">
+                    <div id="receipt-preview">
+                        <div class="text-center py-5 text-muted">
+                            <i class="fas fa-file-invoice fa-3x mb-3"></i>
+                            <p>Sélectionnez des éléments à gauche pour commencer.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<a href="#" class="btn-float-agency" id="btn-agency-float" onclick="selectAgencyReport()" title="État Financier Agence">
+    <i class="fas fa-building fa-2x"></i>
+</a>
+
+<footer class="text-center py-5 mt-5">
+    <div class="container">
+        <p class="mb-2 fw-bold text-dark">SmartLoc <span style="color:var(--wa-teal)">Agencies</span></p>
+        <p class="mb-1">Concepteur : <strong>Atizoun Plateny AMOUSSOU</strong></p>
+        <div class="mt-3 small opacity-50">&copy; 2026 - Tous droits réservés</div>
+    </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // ==========================================
+    // 🌐 PWA SERVICE WORKER REGISTRATION
+    // ==========================================
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Service Worker enregistré avec succès !'))
+                .catch(err => console.log('Échec de l\'enregistrement du Service Worker.', err));
+        });
+    }
+
+    // ==========================================
+    // 🛡️ SYSTÈME DE SÉCURITÉ ET ACCÈS (STRICT)
+    // ==========================================
+    (function() {
+        const session = JSON.parse(localStorage.getItem('smartloc_auth'));
+        if (!session) { window.location.href = 'login.html'; return; }
+
+        if (session.role === 'agent') {
+            const pageActuelle = window.location.pathname.split("/").pop();
+            const pagesAutorisees = ['index.html', 'paiements.html', 'login.html', ''];
+            if (!pagesAutorisees.includes(pageActuelle)) {
+                alert("Accès refusé : Permissions insuffisantes.");
+                window.location.href = 'index.html';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            if (session.role === 'agent') {
+                const pagesInterdites = ['contrats.html', 'contrat_locataires.html', 'comptabilite.html', 'config.html', 'recherche.html'];
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    if (pagesInterdites.includes(link.getAttribute('href'))) link.parentElement.remove();
+                });
+                const floatBtn = document.getElementById('btn-agency-float');
+                if(floatBtn) floatBtn.style.display = 'none';
+            }
+        });
+    })();
+
+    function logout() {
+        if(confirm("Voulez-vous vous déconnecter ?")) {
+            localStorage.removeItem('smartloc_auth');
+            window.location.href = 'login.html';
+        }
+    }
+
+    // ==========================================
+    // 📊 LOGIQUE MÉTIER & STOCKAGE UNIFORMISÉ
+    // ==========================================
+    let tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
+    let owners = JSON.parse(localStorage.getItem('smartloc_owners')) || [];
+    let houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
+    let payments = JSON.parse(localStorage.getItem('smartloc_payments')) || [];
+    let expenses = JSON.parse(localStorage.getItem('smartloc_expenses')) || [];
+    let agencyWithdrawals = JSON.parse(localStorage.getItem('smartloc_agency_withdrawals')) || [];
+    
+    let currentMode = 'tenant'; 
+    let currentTarget = null;
+    let selectedIds = [];
+    let lastFilteredData = [];
+
+    function loadBranding() {
+        const company = JSON.parse(localStorage.getItem('smartloc_company')) || { name: "SmartLoc Agencies" };
+        const logo = localStorage.getItem('smartloc_logo');
+        document.getElementById('header-name-display').innerText = company.name || "SmartLoc";
+        if(logo) document.getElementById('header-logo-display').src = logo;
+    }
+
+    function searchGlobal() {
+        const query = document.getElementById('search-input').value.toLowerCase();
+        const resultsDiv = document.getElementById('search-results');
+        resultsDiv.innerHTML = '';
+        if(query.length < 1) return;
+
+        tenants.filter(t => (t.name || "").toLowerCase().includes(query)).forEach(t => {
+            const house = houses.find(h => String(h.id) === String(t.houseId));
+            const houseName = house ? (house.location || "Bien inconnu") : "Bien inconnu";
+            const desc = house ? (house.description || "") : "";
+            const div = document.createElement('div');
+            div.className = 'result-item';
+            div.innerHTML = `<i class="fas fa-user me-2 text-primary"></i> Locataire: <strong>${t.name}</strong> <br>
+                             <small class="ms-4 text-muted">${houseName} ${t.specificUnit ? '- ' + t.specificUnit : ''}</small><br>
+                             <small class="ms-4 text-secondary italic" style="font-size:0.75rem"><i>${desc}</i></small>`;
+            div.onclick = () => selectTarget('tenant', t);
+            resultsDiv.appendChild(div);
+        });
+
+        owners.filter(o => (o.name || o.designation || "").toLowerCase().includes(query)).forEach(o => {
+            const div = document.createElement('div');
+            div.className = 'result-item';
+            div.innerHTML = `<i class="fas fa-user-tie me-2 text-success"></i> Propriétaire: <strong>${o.name || o.designation || "Sans nom"}</strong>`;
+            div.onclick = () => selectTarget('owner', o);
+            resultsDiv.appendChild(div);
+        });
+    }
+
+    function selectTarget(mode, target) {
+        currentMode = mode;
+        currentTarget = target;
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('search-input').value = target.name || target.designation || "";
+        document.getElementById('doc-interface').style.display = 'block';
+        document.getElementById('month-search-container').style.display = 'flex';
+        document.getElementById('agency-time-filters').style.display = 'none';
+        selectedIds = [];
+        document.getElementById('check-all').checked = false;
+        refreshHistory();
+        loadBranding();
+    }
+
+    function selectAgencyReport() {
+        currentMode = 'agency';
+        currentTarget = { name: "AGENCE SMARTLOC" };
+        document.getElementById('search-input').value = "ÉTAT FINANCIER DE L'AGENCE";
+        document.getElementById('doc-interface').style.display = 'block';
+        document.getElementById('month-search-container').style.display = 'flex';
+        document.getElementById('agency-time-filters').style.display = 'block';
+        selectedIds = [];
+        document.getElementById('check-all').checked = false;
+        refreshHistory();
+    }
+
+    function toggleAll(master) {
+        selectedIds = [];
+        const checkboxes = document.querySelectorAll('.payment-check');
+        checkboxes.forEach(cb => {
+            cb.checked = master.checked;
+            if(master.checked) selectedIds.push(String(cb.dataset.id));
+        });
+    }
+
+    function refreshHistory() {
+        const tbody = document.getElementById('payment-history-body');
+        const monthQuery = document.getElementById('month-search-input').value.toLowerCase();
+        tbody.innerHTML = '';
+        let data = [];
+        const formatFullDate = (d) => new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+        if (currentMode === 'tenant') {
+            document.getElementById('history-title').innerText = "Paiements Loyer";
+            const house = houses.find(h => String(h.id) === String(currentTarget.houseId));
+            const houseDesc = house ? (house.description || "") : "";
+            data = payments.filter(p => String(p.tenantId) === String(currentTarget.id))
+                           .map(p => {
+                               const [y, m] = (p.monthKey || "0-0").split('-');
+                               const label = p.monthKey ? new Date(y, m-1).toLocaleDateString('fr-FR', {month:'long', year:'numeric'}) : "Paiement";
+                               return { id: p.id, label: label, sub: "Le " + formatFullDate(p.date), desc: houseDesc, amount: p.amount, date: p.date, monthKey: p.monthKey };
+                           });
+        } 
+        else if (currentMode === 'owner') {
+            document.getElementById('history-title').innerText = "Flux du Propriétaire";
+            const ownerHouses = houses.filter(h => String(h.ownerId) === String(currentTarget.id));
+            const pms = payments.filter(p => tenants.some(t => String(t.id) === String(p.tenantId) && ownerHouses.some(h => String(h.id) === String(t.houseId))));
+            const exps = expenses.filter(e => ownerHouses.some(h => String(h.id) === String(e.houseId)));
+            data = [
+                ...pms.map(p => {
+                    const t = tenants.find(loc => String(loc.id) === String(p.tenantId));
+                    const h = ownerHouses.find(house => String(house.id) === String(t.houseId));
+                    return { id: p.id, label: "Loyer reçu", sub: (t ? t.name : "Locataire") + " | " + formatFullDate(p.date), desc: h ? h.description : "", amount: p.amount, date: p.date, type: 'plus', monthKey: p.monthKey, raw: p };
+                }),
+                ...exps.map(e => {
+                    const h = ownerHouses.find(house => String(house.id) === String(e.houseId));
+                    return { id: e.id, label: "Charge/Dépense", sub: e.label + " | " + formatFullDate(e.date), desc: h ? h.description : "", amount: -e.amount, date: e.date, type: 'minus', monthKey: '', raw: e };
+                })
+            ];
+        }
+        else if (currentMode === 'agency') {
+            document.getElementById('history-title').innerText = "Gains de l'Agence";
+            const rate = parseFloat(localStorage.getItem('smartloc_commission_rate')) || 10;
+            data = [
+                ...payments.map(p => {
+                    const t = tenants.find(loc => String(loc.id) === String(p.tenantId));
+                    const h = houses.find(house => String(house.id) === String(t?.houseId));
+                    const o = owners.find(owner => String(owner.id) === String(h?.ownerId));
+                    return { 
+                        id: p.id, label: "Commission Loyer", sub: "Taux: "+rate+"% | " + formatFullDate(p.date), 
+                        desc: (h ? h.location : "N/A") + " | Prop: " + (o ? (o.name || o.designation) : "N/A"), 
+                        amount: p.amount * (rate/100), date: p.date, monthKey: p.monthKey, raw: p, house: h, owner: o, tenant: t
+                    };
+                }),
+                ...agencyWithdrawals.map(w => ({ id: w.id, label: "Retrait Gain", sub: "Sortie | " + formatFullDate(w.date), desc: "Retrait Agence", amount: -w.amount, date: w.date, monthKey: '', raw: w }))
+            ];
+
+            const now = new Date();
+            if (document.getElementById('filter-day').checked) {
+                data = data.filter(d => new Date(d.date).toDateString() === now.toDateString());
+            } else if (document.getElementById('filter-week').checked) {
+                const oneWeekAgo = new Date(); oneWeekAgo.setDate(now.getDate() - 7);
+                data = data.filter(d => new Date(d.date) >= oneWeekAgo);
+            } else if (document.getElementById('filter-month').checked) {
+                data = data.filter(d => new Date(d.date).getMonth() === now.getMonth() && new Date(d.date).getFullYear() === now.getFullYear());
+            } else if (document.getElementById('filter-year').checked) {
+                data = data.filter(d => new Date(d.date).getFullYear() === now.getFullYear());
+            }
+        }
+
+        data.sort((a, b) => new Date(b.date) - new Date(a.date));
+        if(monthQuery) data = data.filter(d => (d.label + d.sub + d.desc).toLowerCase().includes(monthQuery));
+        lastFilteredData = data;
+        document.getElementById('count-payments').innerText = data.length;
+
+        data.forEach(item => {
+            const isChecked = selectedIds.includes(String(item.id));
+            const tr = document.createElement('tr');
+            tr.className = 'payment-row';
+            tr.innerHTML = `
+                <td>
+                    <div class="fw-bold small text-capitalize">${item.label}</div>
+                    <small class="text-muted">${item.sub}</small><br>
+                    <small class="text-secondary italic" style="font-size:0.7rem"><i>${item.desc || ""}</i></small>
+                </td>
+                <td class="text-end fw-bold ${item.amount < 0 ? 'text-danger' : 'text-success'}">${Math.abs(item.amount).toLocaleString()} F</td>
+                <td class="text-center"><input type="checkbox" class="form-check-input payment-check" data-id="${item.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelection('${item.id}')"></td>
+            `;
+            tr.onclick = (e) => { if(e.target.type !== 'checkbox') { const cb = tr.querySelector('.payment-check'); cb.checked = !cb.checked; toggleSelection(item.id); } };
+            tbody.appendChild(tr);
+        });
+    }
+
+    function toggleSelection(id) {
+        const idx = selectedIds.indexOf(String(id));
+        if(idx > -1) selectedIds.splice(idx, 1);
+        else selectedIds.push(String(id));
+    }
+
+    function generateDocument() {
+        if(selectedIds.length === 0) return alert("Sélectionnez au moins une ligne.");
+        const company = JSON.parse(localStorage.getItem('smartloc_company')) || { name: "SmartLoc Agencies", address: "Bénin", whatsapp: "" };
+        const logo = localStorage.getItem('smartloc_logo');
+        const signature = localStorage.getItem('smartloc_signature');
+        const itemsToPrint = lastFilteredData.filter(d => selectedIds.includes(String(d.id)));
+        const dates = itemsToPrint.map(i => new Date(i.date));
+        const minDate = new Date(Math.min(...dates)).toLocaleDateString();
+        const maxDate = new Date(Math.max(...dates)).toLocaleDateString();
+
+        let title = "Quittance de Loyer";
+        let bodyContent = "";
+        let total = 0;
+        let recipientName = currentTarget.name || currentTarget.designation || "";
+
+        if (currentMode === 'tenant') {
+            total = itemsToPrint.reduce((s, i) => s + parseFloat(i.amount), 0);
+            const list = itemsToPrint.map(p => {
+                const [y, m] = (p.monthKey || "0-0").split('-');
+                const monthLabel = p.monthKey ? new Date(y, m-1).toLocaleDateString('fr-FR', {month:'long', year:'numeric'}) : "N/A";
+                return `<li>${monthLabel} (Payé le ${new Date(p.date).toLocaleString()})</li>`;
+            }).join('');
+            const house = houses.find(h => String(h.id) === String(currentTarget.houseId));
+            const desc = house ? (house.description || "Non définie") : "Non définie";
+            bodyContent = `<p>Reçu de Mme/M. <strong>${currentTarget.name}</strong> la somme de :</p>
+                           <h3 class="fw-bold text-success">${total.toLocaleString()} F CFA</h3>
+                           <p>Pour le règlement du loyer des périodes :</p><ul>${list}</ul>
+                           <p>Désignation du Bien : <strong>${currentTarget.specificUnit || 'Unité principale'}</strong></p>
+                           <p class="small text-muted italic">Description : <i>${desc}</i></p>`;
+        } 
+        else if (currentMode === 'owner') {
+            title = "État de Reversement";
+            const tableHeaders = `<th>Date</th><th>Maison / Description</th><th>Libellé</th><th class="text-end">Montant</th>`;
+            let rows = itemsToPrint.map(item => {
+                const dateStr = new Date(item.date).toLocaleDateString('fr-FR');
+                return `<tr><td>${dateStr}</td><td><small>${item.desc || ""}</small></td><td>${item.label}</td><td class="text-end fw-bold">${item.amount.toLocaleString()} F</td></tr>`;
+            }).join('');
+            total = itemsToPrint.reduce((s, i) => s + i.amount, 0);
+            bodyContent = `<p>Document établi pour : <strong>${recipientName}</strong></p>
+                           <p>Période couverte : <strong>Du ${minDate} au ${maxDate}</strong></p>
+                           <div class="table-responsive"><table class="table table-bordered small mb-0"><thead class="table-light">${tableHeaders}</thead><tbody>${rows}</tbody><tr class="table-dark"><td colspan="3" class="text-end">TOTAL NET REVERSEMENT</td><td class="text-end">${total.toLocaleString()} F</td></tr></table></div>`;
+        }
+        else if (currentMode === 'agency') {
+            title = "État Financier Agence";
+            recipientName = company.name;
+            const rate = parseFloat(localStorage.getItem('smartloc_commission_rate')) || 10;
+            let filterLabel = "Toutes périodes";
+            if (document.getElementById('filter-day').checked) filterLabel = "Aujourd'hui";
+            else if (document.getElementById('filter-week').checked) filterLabel = "7 derniers jours";
+            else if (document.getElementById('filter-month').checked) filterLabel = "Mois en cours";
+            else if (document.getElementById('filter-year').checked) filterLabel = "Année en cours";
+
+            const sumLoyersPercus = itemsToPrint.filter(i => i.label.includes("Commission")).reduce((s, i) => s + (i.raw.amount || 0), 0);
+            const sumCommissions = itemsToPrint.filter(i => i.label.includes("Commission")).reduce((s, i) => s + i.amount, 0);
+            const sumRetraitsAgence = Math.abs(itemsToPrint.filter(i => i.label.includes("Retrait")).reduce((s, i) => s + i.amount, 0));
+            
+            let synthTable = `
+                <div class="mb-4">
+                    <h6 class="fw-bold text-decoration-underline"><i class="fas fa-chart-pie me-2"></i>TABLEAU DE SYNTHÈSE AGENCE</h6>
+                    <table class="table table-sm table-bordered" style="font-size: 0.85rem;">
+                        <thead class="table-secondary"><tr><th>Indicateur</th><th class="text-end">Valeur (F CFA)</th></tr></thead>
+                        <tbody>
+                            <tr><td>Total Loyers Encaissés (Brut)</td><td class="text-end fw-bold">${sumLoyersPercus.toLocaleString()} F</td></tr>
+                            <tr><td>Commissions Agence (${rate}%)</td><td class="text-end text-success fw-bold">${sumCommissions.toLocaleString()} F</td></tr>
+                            <tr class="table-light"><td>Total Retraits Agence</td><td class="text-end text-danger">${sumRetraitsAgence.toLocaleString()} F</td></tr>
+                            <tr class="table-dark"><td>Solde Commission Disponible</td><td class="text-end">${(sumCommissions - sumRetraitsAgence).toLocaleString()} F</td></tr>
+                        </tbody>
+                    </table>
+                </div>`;
+
+            const tableHeaders = `<th>Date</th><th>Maison</th><th>Propriétaire</th><th>Locataire</th><th>Détails</th><th class="text-end">Loyer Brut</th><th class="text-end">Commission</th>`;
+            let rows = itemsToPrint.map(item => {
+                const dateStr = new Date(item.date).toLocaleDateString('fr-FR');
+                return `<tr><td>${dateStr}</td><td><small>${item.house ? item.house.location : "-"}</small></td><td><small>${item.owner ? (item.owner.name || item.owner.designation) : "-"}</small></td><td><small>${item.tenant ? item.tenant.name : "-"}</small></td><td><small>${item.label}</small></td><td class="text-end">${item.raw && item.raw.amount && item.label.includes("Commission") ? item.raw.amount.toLocaleString() + " F" : "-"}</td><td class="text-end fw-bold ${item.amount < 0 ? 'text-danger' : 'text-success'}">${item.amount.toLocaleString()} F</td></tr>`;
+            }).join('');
+
+            total = itemsToPrint.reduce((s, i) => s + i.amount, 0);
+            bodyContent = synthTable + `<div class="table-responsive"><table class="table table-bordered small mb-0"><thead class="table-light">${tableHeaders}</thead><tbody>${rows}</tbody><tr class="table-dark"><td colspan="6" class="text-end">RÉSULTAT PÉRIODE (NET CAISSE)</td><td class="text-end">${total.toLocaleString()} F</td></tr></table></div>`;
+        }
+
+        const html = `
+            <div class="receipt-header d-flex justify-content-between">
+                <div class="d-flex align-items-center">
+                    ${logo ? `<img src="${logo}" style="max-height:70px; margin-right:15px; border-radius:10px; border:1px solid #eee">` : ''}
+                    <div>
+                        <h4 class="fw-bold mb-0 text-uppercase" style="color:var(--wa-dark-green)">${company.name}</h4>
+                        <p class="small mb-0 text-muted">${company.address || ""}<br>WhatsApp : ${company.whatsapp || 'Non configuré'}</p>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <h6 class="fw-bold mb-0">RÉFÉRENCE : ${Date.now().toString().slice(-6)}</h6>
+                    <p class="small text-muted">Édité le ${new Date().toLocaleDateString()}</p>
+                </div>
+            </div>
+            <h2 class="receipt-title my-4">${title}</h2>
+            <div class="receipt-body">${bodyContent}</div>
+            <div class="signature-box">
+                <p class="mb-0 fw-bold">Le PDG / Cachet</p>
+                ${signature ? `<img src="${signature}" style="max-height:80px; mix-blend-mode: multiply;">` : `<div style="height:60px"></div>`}
+                <div class="signature-line"></div>
+                <p class="small">Atizoun Plateny AMOUSSOU</p>
+            </div>`;
+        document.getElementById('receipt-preview').innerHTML = html;
+    }
+
+    function printReceipt() { if(selectedIds.length > 0) window.print(); }
+
+    function copyForWhatsApp() {
+        if(selectedIds.length === 0) return alert("Sélectionnez d'abord des éléments.");
+        const company = JSON.parse(localStorage.getItem('smartloc_company')) || { name: "SmartLoc Agencies", whatsapp: "" };
+        const itemsToPrint = lastFilteredData.filter(d => selectedIds.includes(String(d.id)));
+        const total = itemsToPrint.reduce((s, i) => s + i.amount, 0);
+        const dates = itemsToPrint.map(i => new Date(i.date));
+        const minDate = new Date(Math.min(...dates)).toLocaleDateString();
+        const maxDate = new Date(Math.max(...dates)).toLocaleDateString();
+
+        let detailText = "";
+        let objLabel = "";
+
+        if (currentMode === 'tenant') {
+            objLabel = "Quittance de Loyer";
+            detailText = `*Locataire:* ${currentTarget.name}\n*Somme Payée:* ${total.toLocaleString()} F CFA\n*Périodes:* ` + itemsToPrint.map(p => {
+                const [y, m] = (p.monthKey || "0-0").split('-');
+                return p.monthKey ? new Date(y, m-1).toLocaleDateString('fr-FR', {month:'long', year:'numeric'}) : "Versement";
+            }).join(', ');
+        } else if (currentMode === 'owner') {
+            objLabel = "État de Reversement";
+            detailText = `*Propriétaire:* ${currentTarget.name || currentTarget.designation}\n*Période:* Du ${minDate} au ${maxDate}\n*Total Net à Reverser:* ${total.toLocaleString()} F CFA`;
+        } else {
+            objLabel = "État Financier Agence";
+            detailText = `*Période:* Du ${minDate} au ${maxDate}\n*Solde Période:* ${total.toLocaleString()} F CFA`;
+        }
+
+        const text = `📄 *DOCUMENT OFFICIEL - ${company.name.toUpperCase()}*\n\n*Objet:* ${objLabel}\n${detailText}\n\n_Document comptable généré via SmartLoc._\n\n*Contact:* ${company.whatsapp}`;
+        navigator.clipboard.writeText(text).then(() => alert("Détails copiés !"));
+    }
+
+    document.addEventListener('DOMContentLoaded', loadBranding);
+</script>
+</body>
+</html>
