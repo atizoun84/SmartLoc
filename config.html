@@ -6,9 +6,7 @@
     <title>SmartLoc - Configuration</title>
     
     <meta name="theme-color" content="#075E54">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192?text=SmartLoc">
+    <link rel="apple-touch-icon" href="logo app.png">
     <link rel="manifest" href="manifest.json">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -179,7 +177,6 @@
             font-weight: bold;
         }
 
-        /* Message de succès plein écran transparent */
         .toast-success-overlay {
             position: fixed;
             top: 0;
@@ -227,6 +224,26 @@
                 opacity: 1;
             }
         }
+
+        /* --- STYLE PWA : BOUTON INSTALLATION --- */
+        #pwa-install-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+            background: var(--wa-light-green);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: none;
+            align-items: center;
+            font-weight: 500;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #pwa-install-btn:active { transform: scale(0.9); }
+        #pwa-install-btn i { font-size: 1.2rem; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -234,10 +251,11 @@
 <nav class="navbar navbar-expand-lg navbar-custom shadow-sm">
     <div class="container">
         <div class="d-flex align-items-center">
-            <img src="" alt="Logo" id="header-logo-display" class="company-logo" style="display: none;">
+            <img src="logo maison.png" alt="Logo" id="header-logo-display" class="company-logo" onerror="this.style.display='none'">
             <div class="brand-container">
                 <span class="company-name" id="header-name-display">SmartLoc</span>
                 <span class="sub-page-title">Configuration</span>
+                <div id="sync-status-container"></div>
             </div>
             <span class="page-title d-none d-md-inline-block"><i class="fas fa-cog me-1"></i>Paramètres</span>
         </div>
@@ -273,8 +291,11 @@
                                 <input type="text" class="form-control" id="comp-name" placeholder="Ex: Excellence Immo" oninput="updateHeader()" disabled>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Logo de l'Entreprise (PNG uniquement)</label>
-                                <input type="file" class="form-control" id="comp-logo-input" accept="image/png" onchange="previewLogo(event)" disabled>
+                                <label class="form-label">Logo de l'Entreprise (logo maison.png)</label>
+                                <div class="bg-light rounded p-3 text-center">
+                                    <img src="logo maison.png" alt="Logo Entreprise" class="signature-preview" style="max-height: 80px; width: auto;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%23e2e8f0\'/%3E%3Ctext x=\'50\' y=\'55\' text-anchor=\'middle\' fill=\'%23999\' font-size=\'12\'%3ELogo%3C/text%3E%3C/svg%3E'">
+                                    <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle"></i> Placez le fichier "logo maison.png" à la racine du projet</p>
+                                </div>
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Adresse de l'Entreprise</label>
@@ -292,10 +313,10 @@
                                 </div>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Signature du PDG (PNG uniquement)</label>
-                                <input type="file" class="form-control mb-2" id="comp-sign-input" accept="image/png" onchange="previewSignature(event)" disabled>
-                                <div class="bg-light rounded p-2 d-inline-block">
-                                    <img id="signature-img" class="signature-preview" src="" alt="Signature" style="display: none;">
+                                <label class="form-label">Signature du PDG (sign.png)</label>
+                                <div class="bg-light rounded p-3 text-center">
+                                    <img id="signature-img" class="signature-preview" src="sign.png" alt="Signature" style="max-height: 80px; width: auto;" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%23e2e8f0\'/%3E%3Ctext x=\'50\' y=\'55\' text-anchor=\'middle\' fill=\'%23999\' font-size=\'10\'%3ESignature%3C/text%3E%3C/svg%3E'">
+                                    <p class="small text-muted mt-2 mb-0"><i class="fas fa-info-circle"></i> Placez le fichier "sign.png" à la racine du projet</p>
                                 </div>
                             </div>
                         </div>
@@ -374,9 +395,25 @@
                 </div>
             </div>
 
+            <div class="card border-danger mt-4" style="background-color: #fff5f5;">
+                <div class="card-body p-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div>
+                        <h5 class="text-danger fw-bold mb-1"><i class="fas fa-exclamation-triangle me-2"></i> Zone de Danger</h5>
+                        <p class="small text-muted mb-0">Réinitialiser l'application effacera localement et sur le cloud (si connecté) <strong>tous</strong> les biens, locataires, paiements et configurations.</p>
+                    </div>
+                    <button class="btn btn-outline-danger btn-sm px-4" onclick="criticalReset()" id="btn-critical-reset" disabled>
+                        <i class="fas fa-trash-alt me-2"></i> RÉINITIALISER TOUT
+                    </button>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
+
+<button id="pwa-install-btn">
+    <i class="fas fa-download"></i> Installer l'App
+</button>
 
 <footer class="text-center py-5">
     <div class="container">
@@ -393,14 +430,35 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-    // --- LOGIQUE PWA (SERVICE WORKER) ---
+    // --- ENREGISTREMENT DU SERVICE WORKER ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('SmartLoc PWA: Service Worker Actif'))
-                .catch(err => console.error('SmartLoc PWA: Erreur SW', err));
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('SmartLoc SW enregistré !'))
+                .catch(err => console.log('Erreur SW:', err));
         });
     }
+
+    // --- LOGIQUE BOUTON INSTALLATION ---
+    let deferredPrompt;
+    const installBtn = document.getElementById('pwa-install-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBtn.style.display = 'flex'; // Affiche le bouton flottant
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                installBtn.style.display = 'none';
+            }
+            deferredPrompt = null;
+        }
+    });
 
     let masterCode = "1234";
     let employees = [];
@@ -447,30 +505,6 @@
     function updateHeader() {
         const name = document.getElementById('comp-name').value;
         document.getElementById('header-name-display').innerText = name || "SmartLoc";
-    }
-
-    function previewLogo(event) {
-        const file = event.target.files;
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e){
-            const output = document.getElementById('header-logo-display');
-            output.src = e.target.result;
-            output.style.display = "block";
-        };
-        reader.readAsDataURL(file);
-    }
-
-    function previewSignature(event) {
-        const file = event.target.files;
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e){
-            const output = document.getElementById('signature-img');
-            output.src = e.target.result;
-            output.style.display = "block";
-        };
-        reader.readAsDataURL(file);
     }
 
     function addEmployee() {
@@ -531,32 +565,30 @@
 
     function saveEmployees() { 
         localStorage.setItem('smartloc_employees', JSON.stringify(employees)); 
+        // SYNCHRO CLOUD IMMÉDIATE
+        if(window.SmartSync) window.SmartSync.push('employees');
     }
 
     function saveAndLock() {
         masterCode = document.getElementById('config-lock-code').value;
         localStorage.setItem('smartloc_mastercode', masterCode);
-        localStorage.setItem('smartloc_company', JSON.stringify({
+        
+        const companyData = {
             name: document.getElementById('comp-name').value,
             address: document.getElementById('comp-address').value,
             pdgName: document.getElementById('pdg-name').value,
             whatsapp: document.getElementById('pdg-whatsapp').value
-        }));
+        };
+        localStorage.setItem('smartloc_company', JSON.stringify(companyData));
         
-        const logoImg = document.getElementById('header-logo-display');
-        const signImg = document.getElementById('signature-img');
-        const logoData = logoImg.src;
-        const signData = signImg.src;
-        
-        if(logoData && logoData.startsWith('data:image')) {
-            localStorage.setItem('smartloc_logo', logoData);
-        }
-        if(signData && signData.startsWith('data:image')) {
-            localStorage.setItem('smartloc_signature', signData);
+        // SYNCHRO CLOUD IMMÉDIATE
+        if(window.SmartSync) {
+            window.SmartSync.push('company');
+            window.SmartSync.push('mastercode');
         }
         
         lockAllFields();
-        showSuccessMessage("Paramètres enregistrés et verrouillés !");
+        showSuccessMessage("Paramètres synchronisés !");
     }
 
     function lockAllFields() {
@@ -569,6 +601,8 @@
         document.getElementById('lock-action-area').innerHTML = `<button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()">
                             <i class="fas fa-unlock me-2"></i> DÉVERROUILLER
                         </button>`;
+        // Verrouillage spécifique du bouton de réinitialisation
+        document.getElementById('btn-critical-reset').disabled = true;
     }
 
     function unlockProcess() {
@@ -585,10 +619,33 @@
         }
     }
 
+    function criticalReset() {
+        if (confirm("ATTENTION : Cette action est IRREVERSIBLE. Toutes les données de l'agence seront supprimées. Continuer ?")) {
+            const code = prompt("Entrez le CODE MAÎTRE pour confirmer la destruction totale :");
+            if (code === masterCode) {
+                // Effacement local
+                const keysToRemove = [
+                    'smartloc_houses', 'smartloc_tenants', 'smartloc_payments', 
+                    'smartloc_employees', 'smartloc_company', 'smartloc_mastercode',
+                    'smartloc_auth', 'smartloc_agency_withdrawals', 'smartloc_archived_tenants'
+                ];
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+
+                // Signal de réinitialisation pour le cloud via SmartSync
+                if (window.SmartSync && typeof window.SmartSync.wipe === 'function') {
+                    window.SmartSync.wipe();
+                }
+
+                alert("Application réinitialisée avec succès. Redirection...");
+                window.location.href = 'login.html';
+            } else {
+                alert("Code incorrect. Action annulée.");
+            }
+        }
+    }
+
     function loadCompanyData() {
-        const data = JSON.parse(localStorage.getItem('smartloc_company')),
-              logo = localStorage.getItem('smartloc_logo'),
-              sign = localStorage.getItem('smartloc_signature');
+        const data = JSON.parse(localStorage.getItem('smartloc_company'));
         masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
         document.getElementById('config-lock-code').value = masterCode;
         
@@ -600,18 +657,15 @@
             updateHeader();
         }
         
-        if(logo) {
-            const l = document.getElementById('header-logo-display'); 
-            l.src = logo; 
-            l.style.display = "block";
-        }
+        const headerLogo = document.getElementById('header-logo-display');
+        if(headerLogo) headerLogo.src = "logo maison.png";
         
-        if(sign) {
-            const s = document.getElementById('signature-img'); 
-            s.src = sign; 
-            s.style.display = "block";
-        }
+        const signatureImg = document.getElementById('signature-img');
+        if(signatureImg) signatureImg.src = "sign.png";
     }
 </script>
+
+<script type="module" src="sync.js"></script>
+
 </body>
 </html>

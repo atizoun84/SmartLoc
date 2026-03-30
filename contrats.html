@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartLoc - Contrats & Biens</title>
-
+    
     <meta name="theme-color" content="#075E54">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192?text=SmartLoc">
+    <link rel="apple-touch-icon" href="logo app.png">
     <link rel="manifest" href="manifest.json">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -59,29 +57,41 @@
 
         .company-logo {
             max-height: 55px;
-            border-radius: 12px;
             margin-right: 15px;
-            border: 2px solid rgba(255,255,255,0.2);
-            background: white;
+            background: transparent;
+            object-fit: contain;
+        }
+
+        .brand-container {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
         }
 
         .company-name {
             font-family: 'Playfair Display', serif;
             font-size: 1.6rem;
-            line-height: 1.2;
+            letter-spacing: 0.5px;
             color: #FFFFFF;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
         }
 
-        .page-subtitle {
-            font-family: 'Roboto', sans-serif;
+        .sub-page-title {
             font-size: 0.75rem;
-            font-weight: 500;
             text-transform: uppercase;
             letter-spacing: 1px;
-            display: block;
-            opacity: 0.9;
-            color: #ffc107;
+            color: rgba(255,255,255,0.85);
+            font-weight: 500;
+        }
+
+        .page-title-badge {
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin-left: 15px;
+            font-weight: 500;
         }
 
         .card {
@@ -178,6 +188,25 @@
             align-items: center;
             backdrop-filter: blur(5px);
         }
+
+        #pwa-install-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+            background: var(--wa-light-green);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: none;
+            align-items: center;
+            font-weight: 500;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #pwa-install-btn:active { transform: scale(0.9); }
+        #pwa-install-btn i { font-size: 1.2rem; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -191,11 +220,13 @@
 <nav class="navbar navbar-expand-lg navbar-custom shadow-sm">
     <div class="container">
         <div class="d-flex align-items-center">
-            <img src="https://via.placeholder.com/150x150?text=LOGO" alt="Logo" id="header-logo-display" class="company-logo">
-            <div class="d-flex flex-column">
+            <img src="logo maison.png" alt="Logo" id="header-logo-display" class="company-logo" onerror="this.style.display='none'">
+            <div class="brand-container">
                 <span class="company-name" id="header-name-display">SmartLoc</span>
-                <span class="page-subtitle">Biens & Contrats</span>
+                <span class="sub-page-title">Biens & Contrats</span>
             </div>
+            <span class="page-title-badge d-none d-md-inline-block"><i class="fas fa-file-contract me-1"></i>Gestion</span>
+            <div id="sync-status-container" class="ms-3 small"></div>
         </div>
         <button class="navbar-toggler text-white border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <i class="fas fa-bars"></i>
@@ -288,8 +319,7 @@
                                     </button>
                                 </div>
                             </div>
-                            <div id="temp-units-display" class="mt-3">
-                                </div>
+                            <div id="temp-units-display" class="mt-3"></div>
                         </div>
 
                         <div class="col-md-12 text-end mt-4">
@@ -344,6 +374,10 @@
     </div>
 </div>
 
+<button id="pwa-install-btn">
+    <i class="fas fa-download"></i> Installer l'App
+</button>
+
 <footer class="text-center py-5">
     <div class="container">
         <p class="mb-2 fw-bold text-dark">SmartLoc <span style="color:var(--wa-teal)">Agencies</span></p>
@@ -354,15 +388,88 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+<script type="module">
+    // --- PROTOCOLE DE SYNCHRONISATION SMARTLOC (FIREBASE CLOUD-FIRST) ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
+        authDomain: "beci-negoce.firebaseapp.com",
+        databaseURL: "https://beci-negoce-default-rtdb.europe-west1.firebasedatabase.app/",
+        projectId: "beci-negoce",
+        storageBucket: "beci-negoce.firebasestorage.app",
+        messagingSenderId: "622021997082",
+        appId: "1:622021997082:web:9bc402604c65c91f3857a3"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const COLLECTIONS = [
+        'tenants', 'houses', 'owners', 'payments', 'company', 
+        'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants'
+    ];
+
+    COLLECTIONS.forEach(col => {
+        const dbRef = ref(db, col);
+        onValue(dbRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data !== null) {
+                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
+                // Rafraîchir les éléments visuels de la page contrats.html
+                if(col === 'owners') window.updateOwnerSelect();
+                if(col === 'houses') window.renderHouses();
+                if(col === 'company') window.loadBranding();
+            }
+        });
+    });
+
+    window.SmartSync = {
+        push: (collectionName) => {
+            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
+            if (localData !== null) {
+                set(ref(db, collectionName), localData);
+            }
+        }
+    };
+
+    onValue(ref(db, ".info/connected"), (snap) => {
+        const statusContainer = document.getElementById('sync-status-container');
+        if (statusContainer) {
+            statusContainer.innerHTML = snap.val() === true 
+                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
+                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
+        }
+    });
+</script>
+
 <script>
-    // --- ENREGISTREMENT SERVICE WORKER (PWA) ---
+    // --- LOGIQUE APPLICATION ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('PWA: SW enregistré'))
-                .catch(err => console.log('PWA: Échec SW', err));
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('SmartLoc SW enregistré !'))
+                .catch(err => console.log('Erreur SW:', err));
         });
     }
+
+    let deferredPrompt;
+    const installBtn = document.getElementById('pwa-install-btn');
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBtn.style.display = 'flex';
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') installBtn.style.display = 'none';
+            deferredPrompt = null;
+        }
+    });
 
     let masterCode = "1234";
     let owners = [];
@@ -380,7 +487,6 @@
                 }
             });
         }
-
         syncAllData();
         loadBranding();
         updateOwnerSelect();
@@ -402,29 +508,26 @@
         masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
     }
 
-    function loadBranding() {
+    window.loadBranding = function() {
         const data = JSON.parse(localStorage.getItem('smartloc_company'));
-        const logo = localStorage.getItem('smartloc_logo');
         if(data) document.getElementById('header-name-display').innerText = (data.name || data.designation || "SmartLoc");
-        if(logo) document.getElementById('header-logo-display').src = logo;
+        document.getElementById('header-logo-display').src = "logo maison.png";
     }
 
-    function addOwner() {
+    window.addOwner = function() {
         const name = document.getElementById('owner-name').value;
         const wa = document.getElementById('owner-wa').value;
         const tel = document.getElementById('owner-tel').value;
 
         if(!name || !wa) return alert("Nom et WhatsApp requis");
 
-        const newOwner = { 
-            id: Date.now().toString(), 
-            name: name, 
-            wa: wa, 
-            tel: tel 
-        };
+        const newOwner = { id: Date.now().toString(), name, wa, tel };
         owners.push(newOwner);
         localStorage.setItem('smartloc_owners', JSON.stringify(owners));
         
+        // SYNC FIREBASE
+        if(window.SmartSync) window.SmartSync.push('owners');
+
         updateOwnerSelect();
         document.getElementById('owner-name').value = "";
         document.getElementById('owner-wa').value = "";
@@ -432,9 +535,10 @@
         showBriefSuccess();
     }
 
-    function updateOwnerSelect() {
+    window.updateOwnerSelect = function() {
         syncAllData();
         const select = document.getElementById('house-owner-select');
+        if(!select) return;
         select.innerHTML = '<option value="">Choisir un propriétaire...</option>';
         owners.forEach(o => {
             const oName = (o.name || o.designation || "Inconnu");
@@ -442,70 +546,60 @@
         });
     }
 
-    function deleteOwnerFromSelect() {
+    window.deleteOwnerFromSelect = function() {
         const select = document.getElementById('house-owner-select');
         const ownerId = select.value;
-        
-        if(!ownerId) return alert("Veuillez d'abord sélectionner un propriétaire dans la liste.");
+        if(!ownerId) return alert("Veuillez d'abord sélectionner un propriétaire.");
         
         const code = prompt("Code PIN pour supprimer ce propriétaire :");
         if(String(code) === String(masterCode)) {
-            const isLinked = houses.some(h => String(h.ownerId) === String(ownerId));
-            if(isLinked) {
-                if(!confirm("Ce propriétaire possède des contrats enregistrés. Sa suppression rendra ces contrats orphelins. Continuer ?")) return;
-            }
-
             owners = owners.filter(o => String(o.id) !== String(ownerId));
             localStorage.setItem('smartloc_owners', JSON.stringify(owners));
+            
+            if(window.SmartSync) window.SmartSync.push('owners');
+            
             updateOwnerSelect();
             renderHouses();
             alert("Propriétaire supprimé.");
-        } else {
-            alert("Code incorrect.");
-        }
+        } else { alert("Code incorrect."); }
     }
 
-    function updateLocationDatalist() {
+    window.updateLocationDatalist = function() {
         syncAllData();
         const list = document.getElementById('location-suggestions');
+        if(!list) return;
         const locations = [...new Set(houses.map(h => h.location))];
         list.innerHTML = locations.map(loc => `<option value="${loc}">`).join('');
     }
 
-    function addUnitToList() {
+    window.addUnitToList = function() {
         const name = document.getElementById('temp-unit-name').value;
         const price = document.getElementById('temp-unit-price').value;
-
         if(!name || !price) return alert("Indiquez la désignation et le prix");
-
         tempUnits.push({ name: name, price: parseFloat(price) });
         document.getElementById('temp-unit-name').value = "";
         document.getElementById('temp-unit-price').value = "";
         renderTempUnits();
     }
 
-    function renderTempUnits() {
+    window.renderTempUnits = function() {
         const container = document.getElementById('temp-units-display');
         container.innerHTML = tempUnits.map((u, index) => `
             <div class="temp-item">
-                <span>Désignation : <strong>${u.name || u.designation}</strong> Loyer mensuel : <strong>${u.price.toLocaleString()} F</strong></span>
+                <span>Désignation : <strong>${u.name}</strong> Loyer : <strong>${u.price.toLocaleString()} F</strong></span>
                 <i class="fas fa-times text-danger" style="cursor:pointer" onclick="removeUnit(${index})"></i>
             </div>
         `).join('');
     }
 
-    function removeUnit(index) {
+    window.removeUnit = function(index) {
         tempUnits.splice(index, 1);
         renderTempUnits();
     }
 
-    function handleHouseAction() {
+    window.handleHouseAction = function() {
         const editId = document.getElementById('edit-house-id').value;
-        if (editId) {
-            updateHouse(String(editId));
-        } else {
-            addHouse();
-        }
+        if (editId) { updateHouse(String(editId)); } else { addHouse(); }
     }
 
     function addHouse() {
@@ -514,53 +608,36 @@
         const description = document.getElementById('house-description').value;
         const sigDate = document.getElementById('contract-date').value;
 
-        if(!ownerId || !location || !sigDate || tempUnits.length === 0) {
-            return alert("Veuillez remplir le propriétaire, la localisation, la date et ajouter au moins un bien");
-        }
+        if(!ownerId || !location || !sigDate || tempUnits.length === 0) return alert("Remplissez tous les champs");
 
         const house = { 
             id: Date.now().toString(), 
             ownerId: String(ownerId), 
             units: JSON.stringify(tempUnits), 
-            location,
-            description,
-            sigDate 
+            location, description, sigDate 
         };
-
         houses.push(house);
         localStorage.setItem('smartloc_houses', JSON.stringify(houses));
         
+        if(window.SmartSync) window.SmartSync.push('houses');
+
         resetHouseForm();
         renderHouses();
         updateLocationDatalist();
         showBriefSuccess();
     }
 
-    function showBriefSuccess() {
-        const overlay = document.getElementById('success-overlay');
-        overlay.style.display = "flex";
-        setTimeout(() => { overlay.style.display = "none"; }, 1500);
-    }
-
-    function editHouse(id) {
+    window.editHouse = function(id) {
         syncAllData();
         const house = houses.find(h => String(h.id) === String(id));
         if (!house) return;
-
         document.getElementById('edit-house-id').value = String(house.id);
         document.getElementById('house-owner-select').value = String(house.ownerId);
         document.getElementById('house-location').value = house.location;
         document.getElementById('house-description').value = house.description || "";
         document.getElementById('contract-date').value = house.sigDate;
-
-        try {
-            tempUnits = JSON.parse(house.units);
-        } catch(e) {
-            tempUnits = [];
-        }
-        
+        try { tempUnits = JSON.parse(house.units); } catch(e) { tempUnits = []; }
         renderTempUnits();
-
         document.getElementById('btn-house-text').innerText = "METTRE À JOUR LE CONTRAT";
         window.scrollTo({ top: 400, behavior: 'smooth' });
     }
@@ -568,7 +645,6 @@
     function updateHouse(id) {
         const index = houses.findIndex(h => String(h.id) === String(id));
         if (index === -1) return;
-
         houses[index].ownerId = String(document.getElementById('house-owner-select').value);
         houses[index].location = document.getElementById('house-location').value;
         houses[index].description = document.getElementById('house-description').value;
@@ -576,6 +652,9 @@
         houses[index].units = JSON.stringify(tempUnits);
 
         localStorage.setItem('smartloc_houses', JSON.stringify(houses));
+        
+        if(window.SmartSync) window.SmartSync.push('houses');
+
         resetHouseForm();
         renderHouses();
         showBriefSuccess();
@@ -591,56 +670,40 @@
         document.getElementById('btn-house-text').innerText = "ENREGISTRER LE CONTRAT FINAL";
     }
 
-    function renderHouses() {
+    window.renderHouses = function() {
         syncAllData();
         const tbody = document.getElementById('houses-list');
+        if(!tbody) return;
         tbody.innerHTML = "";
-        
         houses.forEach(h => {
             const owner = owners.find(o => String(o.id) === String(h.ownerId));
-            const ownerName = owner ? (owner.name || owner.designation || "Propriétaire Inconnu") : "Non trouvé";
-            const ownerWa = owner ? owner.wa : "";
-            const houseDesc = h.description || "-";
-            
+            const ownerName = owner ? (owner.name || "Propriétaire Inconnu") : "Non trouvé";
             let unitsList = [];
-            try {
-                unitsList = JSON.parse(h.units);
-            } catch(e) {
-                unitsList = [];
-            }
-
+            try { unitsList = JSON.parse(h.units); } catch(e) { unitsList = []; }
             unitsList.forEach(u => {
-                const uName = (u.name || u.designation || "Unité");
-                const uPrice = Number(u.price).toLocaleString();
-
                 tbody.innerHTML += `
                     <tr>
-                        <td class="ps-4 fw-bold text-wrap" style="max-width: 200px;">${uName}</td>
-                        <td class="text-primary fw-bold">${uPrice}</td>
+                        <td class="ps-4 fw-bold">${u.name}</td>
+                        <td class="text-primary fw-bold">${u.price.toLocaleString()}</td>
                         <td>${h.location}</td>
-                        <td class="small">${houseDesc}</td>
-                        <td>${ownerName}<br><small class="text-success">${ownerWa}</small></td>
+                        <td class="small">${h.description || "-"}</td>
+                        <td>${ownerName}</td>
                         <td>${h.sigDate}</td>
                         <td class="text-center">
-                            <button class="btn btn-sm btn-outline-primary border-0 me-1" onclick="editHouse('${h.id}')">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteHouse('${h.id}')">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            <button class="btn btn-sm btn-outline-primary border-0" onclick="editHouse('${h.id}')"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteHouse('${h.id}')"><i class="fas fa-trash"></i></button>
                         </td>
-                    </tr>
-                `;
+                    </tr>`;
             });
         });
     }
 
-    function toggleHousesTable() {
+    window.toggleHousesTable = function() {
         const container = document.getElementById('table-houses-container');
         container.style.display = (container.style.display === "none" || container.style.display === "") ? "block" : "none";
     }
 
-    function lockAllFields() {
+    window.lockAllFields = function() {
         const elements = document.querySelectorAll('input, select, textarea, button:not(.navbar button):not(.navbar-toggler):not(.btn-sm):not(#btn-toggle-houses)');
         elements.forEach(el => {
             if(el.id !== "unlock-trigger-btn") {
@@ -648,43 +711,38 @@
                 if(['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el.classList.add('info-locked');
             }
         });
-        
-        document.getElementById('lock-action-area').innerHTML = `
-            <button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()">
-                <i class="fas fa-unlock me-2"></i> DÉVERROUILLER
-            </button>`;
+        document.getElementById('lock-action-area').innerHTML = `<button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()"><i class="fas fa-unlock me-2"></i> DÉVERROUILLER</button>`;
         document.getElementById('owner-delete-link').style.display = "none";
     }
 
-    function unlockProcess() {
+    window.unlockProcess = function() {
         const code = prompt("Entrez le code PIN :");
         if(String(code) === String(masterCode)) {
             document.querySelectorAll('input, select, textarea, button').forEach(el => {
                 el.disabled = false;
                 el.classList.remove('info-locked');
             });
-            document.getElementById('lock-action-area').innerHTML = `
-                <button class="btn btn-whatsapp btn-lg" onclick="saveAndLock()">
-                    <i class="fas fa-save me-2"></i> SAUVEGARDER & VERROUILLER
-                </button>`;
+            document.getElementById('lock-action-area').innerHTML = `<button class="btn btn-whatsapp btn-lg" onclick="saveAndLock()"><i class="fas fa-save me-2"></i> SAUVEGARDER & VERROUILLER</button>`;
             document.getElementById('owner-delete-link').style.display = "inline";
-        } else {
-            alert("Code incorrect.");
-        }
+        } else { alert("Code incorrect."); }
     }
 
-    function saveAndLock() {
-        lockAllFields();
-        alert("Modifications protégées.");
-    }
+    window.saveAndLock = function() { lockAllFields(); alert("Modifications protégées."); }
 
-    function deleteHouse(id) {
+    window.deleteHouse = function(id) {
         const code = prompt("Code PIN pour supprimer :");
         if(String(code) === String(masterCode)) {
             houses = houses.filter(h => String(h.id) !== String(id));
             localStorage.setItem('smartloc_houses', JSON.stringify(houses));
+            if(window.SmartSync) window.SmartSync.push('houses');
             renderHouses();
-        }
+        } else { alert("Code incorrect."); }
+    }
+
+    function showBriefSuccess() {
+        const overlay = document.getElementById('success-overlay');
+        overlay.style.display = "flex";
+        setTimeout(() => { overlay.style.display = "none"; }, 1500);
     }
 </script>
 </body>

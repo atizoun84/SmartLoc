@@ -4,11 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartLoc - Recherche & Finance</title>
-
+    
     <meta name="theme-color" content="#075E54">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192?text=SmartLoc">
+    <link rel="apple-touch-icon" href="logo app.png">
     <link rel="manifest" href="manifest.json">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -21,13 +19,11 @@
             const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
             const currentPage = window.location.pathname.split("/").pop() || "index.html";
 
-            // 1. Redirection si aucune session
             if (!auth) {
                 window.location.href = 'login.html';
                 return;
             }
 
-            // 2. Restriction stricte pour les Agents
             if (auth.role === 'agent') {
                 const authorizedPages = ['index.html', 'paiements.html', 'recherche.html']; 
                 if (!authorizedPages.includes(currentPage)) {
@@ -60,9 +56,33 @@
             color: white;
             border-top: 3px solid var(--wa-light-green);
         }
-        .company-logo { max-height: 50px; border-radius: 8px; background: white; padding: 2px; margin-right: 12px; }
-        .company-name { font-family: 'Playfair Display', serif; font-size: 1.5rem; color: white; text-decoration: none; line-height: 1.2; }
-        .page-subtitle { font-family: 'Roboto', sans-serif; font-size: 0.75rem; display: block; color: var(--wa-light-green); font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }
+
+        .company-logo {
+            max-height: 55px;
+            margin-right: 15px;
+            background: transparent;
+            object-fit: contain;
+        }
+        .brand-container {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+        .company-name {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            letter-spacing: 0.5px;
+            color: #FFFFFF;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            text-decoration: none;
+        }
+        .sub-page-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(255,255,255,0.85);
+            font-weight: 500;
+        }
         
         .nav-link { color: rgba(255,255,255,0.9) !important; font-weight: 500; transition: 0.3s; }
         .nav-link:hover { color: var(--wa-light-green) !important; }
@@ -91,19 +111,39 @@
         .btn-action { border-radius: 10px; font-weight: 600; padding: 8px 15px; transition: 0.2s; font-size: 0.85rem; }
         
         .btn-logout { color: #ffc107 !important; font-weight: bold; }
+
+        #pwa-install-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+            background: var(--wa-light-green);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: none;
+            align-items: center;
+            font-weight: 500;
+            transition: transform 0.3s;
+        }
+        #pwa-install-btn:active { transform: scale(0.9); }
+        #sync-status-container { font-size: 0.8rem; margin-top: 5px; }
     </style>
 </head>
 <body>
 
 <nav class="navbar navbar-expand-lg navbar-custom shadow-sm sticky-top mb-5">
     <div class="container">
-        <a class="d-flex align-items-center company-name" href="index.html">
-            <img src="" alt="Logo" id="header-logo-display" class="company-logo d-none">
-            <div>
-                <span id="header-name-display">SmartLoc</span>
-                <span class="page-subtitle">Recherche & Finance</span>
+        <div class="d-flex align-items-center">
+            <img src="logo maison.png" alt="Logo" id="header-logo-display" class="company-logo" onerror="this.style.display='none'">
+            <div class="brand-container">
+                <a href="index.html" class="company-name" id="header-name-display">SmartLoc</a>
+                <span class="sub-page-title">Recherche & Finance</span>
+                <div id="sync-status-container"></div>
             </div>
-        </a>
+        </div>
         
         <button class="navbar-toggler text-white border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <i class="fas fa-bars"></i>
@@ -162,6 +202,10 @@
         </div>
     </div>
 </div>
+
+<button id="pwa-install-btn">
+    <i class="fas fa-download me-2"></i> Installer l'App
+</button>
 
 <div class="modal fade" id="detailModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-dialog-compact">
@@ -286,15 +330,83 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
+        authDomain: "beci-negoce.firebaseapp.com",
+        databaseURL: "https://beci-negoce-default-rtdb.europe-west1.firebasedatabase.app/",
+        projectId: "beci-negoce",
+        storageBucket: "beci-negoce.firebasestorage.app",
+        messagingSenderId: "622021997082",
+        appId: "1:622021997082:web:9bc402604c65c91f3857a3"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const COLLECTIONS = [
+        'tenants', 'houses', 'payments', 'company', 
+        'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants', 'owners'
+    ];
+
+    COLLECTIONS.forEach(col => {
+        onValue(ref(db, col), (snapshot) => {
+            const data = snapshot.val();
+            if (data !== null) {
+                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
+                if(typeof refreshTable === 'function') refreshTable();
+                if(document.getElementById('archiveModal').classList.contains('show')) renderArchives();
+            }
+        });
+    });
+
+    window.SmartSync = {
+        push: (collectionName) => {
+            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
+            if (localData !== null) {
+                set(ref(db, collectionName), localData);
+            }
+        }
+    };
+
+    onValue(ref(db, ".info/connected"), (snap) => {
+        const statusContainer = document.getElementById('sync-status-container');
+        if (statusContainer) {
+            statusContainer.innerHTML = snap.val() === true 
+                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
+                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
+        }
+    });
+</script>
+
 <script>
-    // --- ENREGISTREMENT SERVICE WORKER (PWA) ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('PWA: SW enregistré'))
-                .catch(err => console.log('PWA: Échec SW', err));
+            navigator.serviceWorker.register('sw.js').catch(err => console.log('Erreur SW:', err));
         });
     }
+
+    let deferredPrompt;
+    const installBtn = document.getElementById('pwa-install-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBtn.style.display = 'flex';
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') installBtn.style.display = 'none';
+            deferredPrompt = null;
+        }
+    });
 
     let owners = [], houses = [], tenants = [], payments = [], archivedTenants = [], selectedItem = null;
 
@@ -303,7 +415,6 @@
         if (auth && auth.role === 'agent') {
             document.querySelectorAll('[data-role="admin"]').forEach(el => el.remove());
         }
-
         syncData();
         loadBranding();
         refreshTable();
@@ -326,12 +437,9 @@
 
     function loadBranding() {
         const data = JSON.parse(localStorage.getItem('smartloc_company'));
-        const logo = localStorage.getItem('smartloc_logo');
         if(data) document.getElementById('header-name-display').innerText = (data.name || "SmartLoc");
-        if(logo) {
-            const l = document.getElementById('header-logo-display');
-            l.src = logo; l.classList.remove('d-none');
-        }
+        const headerLogo = document.getElementById('header-logo-display');
+        if(headerLogo) headerLogo.src = "logo maison.png";
     }
 
     function calculateFinance(t) {
@@ -355,6 +463,7 @@
         syncData();
         const query = document.getElementById('global-search').value.toLowerCase();
         const tbody = document.getElementById('master-table-body');
+        if(!tbody) return;
         tbody.innerHTML = '';
 
         houses.forEach(h => {
@@ -383,15 +492,9 @@
                         <div class="small fw-bold">${ownerName}</div>
                         <div class="badge bg-light text-muted border" style="font-size:0.7rem">${h.location || 'N/A'}</div>
                     </td>
-                    <td class="text-center">
-                        ${isOccupied ? `<span class="fw-bold text-dark">${fin.entryDay}</span>` : '---'}
-                    </td>
-                    <td class="text-center">
-                        <span class="badge ${isOccupied ? 'bg-danger' : 'bg-success'}">${isOccupied ? 'OCCUPÉ' : 'LIBRE'}</span>
-                    </td>
-                    <td>
-                        ${isOccupied ? `<div class="fw-bold small">${tenantName}</div><div class="text-muted" style="font-size:0.7rem">${tenant.tel || ''}</div>` : '<em class="text-muted small">Aucun</em>'}
-                    </td>
+                    <td class="text-center">${isOccupied ? `<span class="fw-bold text-dark">${fin.entryDay}</span>` : '---'}</td>
+                    <td class="text-center"><span class="badge ${isOccupied ? 'bg-danger' : 'bg-success'}">${isOccupied ? 'OCCUPÉ' : 'LIBRE'}</span></td>
+                    <td>${isOccupied ? `<div class="fw-bold small">${tenantName}</div><div class="text-muted" style="font-size:0.7rem">${tenant.tel || ''}</div>` : '<em class="text-muted small">Aucun</em>'}</td>
                     <td class="text-end fw-bold">${parseFloat(u.price).toLocaleString()} F</td>
                     <td class="text-end pe-4">
                         ${isOccupied ? (fin.debt > 0 ? `<span class="text-danger small fw-bold">Dette: ${fin.debt.toLocaleString()} F</span>` : `<span class="text-success small fw-bold">Avance: ${fin.advance.toLocaleString()} F</span>`) : '---'}
@@ -417,7 +520,6 @@
         const finSection = document.getElementById('finance-section');
         const btnDebt = document.getElementById('btn-manage-debt'), btnRefund = document.getElementById('btn-refund-advance');
         const btnTerm = document.getElementById('btn-terminate'), btnOccupy = document.getElementById('btn-occupy');
-
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
 
         if(tenant) {
@@ -430,24 +532,19 @@
             document.getElementById('m-total-paid').innerText = fin.totalPaid.toLocaleString() + " F";
             document.getElementById('m-debt').innerText = fin.debt.toLocaleString() + " F";
             document.getElementById('m-advance').innerText = fin.advance.toLocaleString() + " F";
-            
             btnDebt.classList.remove('d-none');
             btnOccupy.classList.add('d-none');
-            
             if(auth.role === 'admin') {
                 btnTerm.classList.remove('d-none');
                 btnRefund.classList.toggle('d-none', fin.advance <= 0);
             } else {
-                btnTerm.classList.add('d-none');
-                btnRefund.classList.add('d-none');
+                btnTerm.classList.add('d-none'); btnRefund.classList.add('d-none');
             }
         } else {
             document.getElementById('m-tenant-name').innerText = "LIBRE";
             statusBadge.innerHTML = '<span class="badge bg-success px-3 py-2">DISPONIBLE</span>';
             finSection.classList.add('d-none');
-            btnDebt.classList.add('d-none'); 
-            btnRefund.classList.add('d-none');
-            btnTerm.classList.add('d-none'); 
+            btnDebt.classList.add('d-none'); btnRefund.classList.add('d-none'); btnTerm.classList.add('d-none'); 
             btnOccupy.classList.toggle('d-none', auth.role !== 'admin');
         }
         new bootstrap.Modal(document.getElementById('detailModal')).show();
@@ -464,7 +561,6 @@
     function terminateContract() {
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
         const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
-        
         if (auth.role !== 'admin') return alert("Seul l'administrateur peut effectuer cette action.");
 
         const code = prompt("Action sensible : Entrez le code PIN pour libérer l'unité :");
@@ -485,16 +581,16 @@
 
             archivedTenants.push(archive);
             localStorage.setItem('smartloc_archived_tenants', JSON.stringify(archivedTenants));
+            if(window.SmartSync) window.SmartSync.push('archived_tenants');
             
             tenants = tenants.filter(item => String(item.id) !== String(t.id));
             localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
+            if(window.SmartSync) window.SmartSync.push('tenants');
             
             bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
             refreshTable();
-            alert("Contrat clôturé et déplacé en archives.");
-        } else if (code !== null) {
-            alert("Code incorrect.");
-        }
+            alert("Contrat clôturé et archivé.");
+        } else if (code !== null) alert("Code incorrect.");
     }
 
     function refundAdvance() {
@@ -503,13 +599,13 @@
 
         const code = prompt("Code PIN requis pour le remboursement d'avance :");
         const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
-        
         if (String(code) === String(masterCode)) {
             const index = tenants.findIndex(t => String(t.id) === String(selectedItem.tenant.id));
             if (index !== -1) {
                 tenants[index].advance = 0;
                 localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
-                alert("Avance remboursée (remise à zéro).");
+                if(window.SmartSync) window.SmartSync.push('tenants');
+                alert("Avance remboursée.");
                 bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
                 refreshTable();
             }
@@ -518,7 +614,7 @@
     
     function openArchive() {
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        if(auth.role === 'admin' || confirm("Accès restreint. Seul le PDG peut modifier les archives. Continuer en lecture seule ?")) {
+        if(auth.role === 'admin' || confirm("Accès restreint au PDG. Continuer en lecture seule ?")) {
             renderArchives();
             new bootstrap.Modal(document.getElementById('archiveModal')).show();
         }
@@ -526,6 +622,7 @@
 
     function renderArchives() {
         const body = document.getElementById('archive-table-body');
+        if(!body) return;
         body.innerHTML = '';
         const search = document.getElementById('archive-search').value.toLowerCase();
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
@@ -541,9 +638,7 @@
                 <td><small class="text-muted">${a.houseDescription || '-'}</small></td>
                 <td><div class="small text-danger">Out: ${a.exitDate}</div></td>
                 <td class="text-end"><span class="badge ${a.finalDebt > 0 ? 'bg-danger' : 'bg-success'}">${a.finalDebt > 0 ? a.finalDebt.toLocaleString()+' F' : 'Réglé'}</span></td>
-                <td class="text-center">
-                    ${auth.role === 'admin' ? `<button class="btn btn-sm text-danger" onclick="deleteArchive('${a.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}
-                </td>
+                <td class="text-center">${auth.role === 'admin' ? `<button class="btn btn-sm text-danger" onclick="deleteArchive('${a.id}')"><i class="fas fa-trash-alt"></i></button>` : ''}</td>
             `;
             body.appendChild(tr);
         });
@@ -553,6 +648,7 @@
         if(confirm("Supprimer définitivement cette archive ?")) {
             archivedTenants = archivedTenants.filter(a => String(a.id) !== String(id));
             localStorage.setItem('smartloc_archived_tenants', JSON.stringify(archivedTenants));
+            if(window.SmartSync) window.SmartSync.push('archived_tenants');
             renderArchives();
         }
     }
