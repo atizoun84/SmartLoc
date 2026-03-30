@@ -240,6 +240,7 @@
                                 <th class="text-center">
                                     <input type="checkbox" class="form-check-input" id="check-all" onclick="toggleAll(this)">
                                 </th>
+                                <th class="text-center no-print">Action</th>
                             </tr>
                         </thead>
                         <tbody id="payment-history-body"></tbody>
@@ -295,7 +296,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+    import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
     import { getStorage, ref as sRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js";
 
     const firebaseConfig = {
@@ -331,9 +332,14 @@
             const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
             if (localData !== null) set(ref(db, collectionName), localData);
         },
+        // Ajout de la méthode delete pour la cohérence
+        deleteItem: (collectionName) => {
+             const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
+             set(ref(db, collectionName), localData);
+        },
         uploadFile: async (fileList, type) => {
             if(!fileList || fileList.length === 0) return;
-            const file = fileList; // Correction du TypeError : on prend le premier Blob de la liste
+            const file = fileList; 
             try {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
@@ -495,7 +501,7 @@
                            .map(p => {
                                const [y, m] = (p.monthKey || "0-0").split('-');
                                const label = p.monthKey ? new Date(y, m-1).toLocaleDateString('fr-FR', {month:'long', year:'numeric'}) : "Paiement";
-                               return { id: p.id, label: label, sub: "Le " + formatFullDate(p.date), desc: house?.description || "", amount: p.amount, date: p.date };
+                               return { id: p.id, originId: p.id, type: 'payment', label: label, sub: "Le " + formatFullDate(p.date), desc: house?.description || "", amount: p.amount, date: p.date };
                            });
         } 
         else if (currentMode === 'owner') {
@@ -503,18 +509,23 @@
             const ownerHouses = houses.filter(h => String(h.ownerId) === String(currentTarget.id));
             const pms = payments.filter(p => tenants.some(t => String(t.id) === String(p.tenantId) && ownerHouses.some(h => String(h.id) === String(t.houseId))));
             const exps = expenses.filter(e => ownerHouses.some(h => String(h.id) === String(e.houseId)));
-            data = [...pms.map(p => ({ id: p.id, label: "Loyer reçu", sub: formatFullDate(p.date), amount: p.amount, date: p.date })),
-                    ...exps.map(e => ({ id: e.id, label: "Dépense", sub: e.label + " | " + formatFullDate(e.date), amount: -e.amount, date: e.date }))];
+            data = [...pms.map(p => ({ id: p.id, originId: p.id, type: 'payment', label: "Loyer reçu", sub: formatFullDate(p.date), amount: p.amount, date: p.date })),
+                    ...exps.map(e => ({ id: e.id, originId: e.id, type: 'expense', label: "Dépense", sub: e.label + " | " + formatFullDate(e.date), amount: -e.amount, date: e.date }))];
         }
         else if (currentMode === 'agency') {
             document.getElementById('history-title').innerText = "Gains de l'Agence";
             const rate = parseFloat(localStorage.getItem('smartloc_commission_rate')) || 10;
-            data = [...payments.map(p => ({ id: p.id, label: "Commission Loyer", sub: formatFullDate(p.date), amount: p.amount * (rate/100), date: p.date })),
-                    ...agencyWithdrawals.map(w => ({ id: w.id, label: "Retrait Gain", sub: formatFullDate(w.date), amount: -w.amount, date: w.date }))];
+            data = [...payments.map(p => ({ id: p.id, originId: p.id, type: 'payment', label: "Commission Loyer", sub: formatFullDate(p.date), amount: p.amount * (rate/100), date: p.date })),
+                    ...agencyWithdrawals.map(w => ({ id: w.id, originId: w.id, type: 'withdrawal', label: "Retrait Gain", sub: formatFullDate(w.date), amount: -w.amount, date: w.date }))];
             
             const now = new Date();
             if (document.getElementById('filter-day').checked) data = data.filter(d => new Date(d.date).toDateString() === now.toDateString());
+            else if (document.getElementById('filter-week').checked) {
+                const oneWeekAgo = new Date(); oneWeekAgo.setDate(now.getDate() - 7);
+                data = data.filter(d => new Date(d.date) >= oneWeekAgo);
+            }
             else if (document.getElementById('filter-month').checked) data = data.filter(d => new Date(d.date).getMonth() === now.getMonth());
+            else if (document.getElementById('filter-year').checked) data = data.filter(d => new Date(d.date).getFullYear() === now.getFullYear());
         }
 
         data.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -530,8 +541,19 @@
                 <td><div class="fw-bold small">${item.label}</div><small class="text-muted">${item.sub}</small></td>
                 <td class="text-end fw-bold ${item.amount < 0 ? 'text-danger' : 'text-success'}">${Math.abs(item.amount).toLocaleString()} F</td>
                 <td class="text-center"><input type="checkbox" class="form-check-input payment-check" data-id="${item.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelection('${item.id}')"></td>
+                <td class="text-center no-print">
+                    <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteEntry('${item.type}', '${item.originId}', event)" title="Supprimer">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
             `;
-            tr.onclick = (e) => { if(e.target.type !== 'checkbox') { const cb = tr.querySelector('.payment-check'); cb.checked = !cb.checked; toggleSelection(item.id); } };
+            tr.onclick = (e) => { 
+                if(e.target.type !== 'checkbox' && !e.target.closest('button')) { 
+                    const cb = tr.querySelector('.payment-check'); 
+                    cb.checked = !cb.checked; 
+                    toggleSelection(item.id); 
+                } 
+            };
             tbody.appendChild(tr);
         });
     }
@@ -540,6 +562,37 @@
         const idx = selectedIds.indexOf(String(id));
         if(idx > -1) selectedIds.splice(idx, 1);
         else selectedIds.push(String(id));
+    }
+
+    // FONCTION DE SUPPRESSION AVEC CODE MAÎTRE
+    window.deleteEntry = function(type, id, event) {
+        if(event) event.stopPropagation();
+        const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
+        const code = prompt("Action Critique : Entrez le CODE MAÎTRE pour supprimer cette opération :");
+        
+        if (String(code) === String(masterCode)) {
+            if (!confirm("Confirmer la suppression définitive ?")) return;
+
+            if (type === 'payment') {
+                payments = payments.filter(p => String(p.id) !== String(id));
+                localStorage.setItem('smartloc_payments', JSON.stringify(payments));
+                if(window.SmartSync) window.SmartSync.deleteItem('payments');
+            } else if (type === 'expense') {
+                expenses = expenses.filter(e => String(e.id) !== String(id));
+                localStorage.setItem('smartloc_expenses', JSON.stringify(expenses));
+                if(window.SmartSync) window.SmartSync.deleteItem('expenses');
+            } else if (type === 'withdrawal') {
+                agencyWithdrawals = agencyWithdrawals.filter(w => String(w.id) !== String(id));
+                localStorage.setItem('smartloc_agency_withdrawals', JSON.stringify(agencyWithdrawals));
+                if(window.SmartSync) window.SmartSync.deleteItem('agency_withdrawals');
+            }
+
+            updateLocalVariables();
+            refreshHistory();
+            alert("Opération supprimée avec succès.");
+        } else if (code !== null) {
+            alert("Code incorrect. Suppression annulée.");
+        }
     }
 
     function generateDocument() {

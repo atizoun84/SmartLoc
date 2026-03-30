@@ -225,7 +225,6 @@
             }
         }
 
-        /* --- STYLE PWA : BOUTON INSTALLATION --- */
         #pwa-install-btn {
             position: fixed;
             bottom: 30px;
@@ -270,7 +269,7 @@
                 <li class="nav-item"><a class="nav-link text-white px-3" href="paiements.html"><i class="fas fa-money-bill-wave me-1"></i> Paiements</a></li>
                 <li class="nav-item"><a class="nav-link text-white px-3" href="comptabilite.html"><i class="fas fa-calculator me-1"></i> Comptabilité</a></li>
                 <li class="nav-item"><a class="nav-link text-white px-3" href="recherche.html"><i class="fas fa-search me-1"></i> Recherche</a></li>
-                <li class="nav-item"><a class="nav-link text-white active fw-bold px-3" href="config.html"><i class="fas fa-cog me-1"></i> Paramètres</a></li>
+                <li class="nav-item"><a class="nav-link active fw-bold text-white px-3" href="config.html"><i class="fas fa-cog me-1"></i> Paramètres</a></li>
                 <li class="nav-item"><a class="nav-link btn-logout px-3" href="#" onclick="logout()"><i class="fas fa-sign-out-alt me-1"></i> Quitter</a></li>
             </ul>
         </div>
@@ -395,18 +394,6 @@
                 </div>
             </div>
 
-            <div class="card border-danger mt-4" style="background-color: #fff5f5;">
-                <div class="card-body p-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
-                    <div>
-                        <h5 class="text-danger fw-bold mb-1"><i class="fas fa-exclamation-triangle me-2"></i> Zone de Danger</h5>
-                        <p class="small text-muted mb-0">Réinitialiser l'application effacera localement et sur le cloud (si connecté) <strong>tous</strong> les biens, locataires, paiements et configurations.</p>
-                    </div>
-                    <button class="btn btn-outline-danger btn-sm px-4" onclick="criticalReset()" id="btn-critical-reset" disabled>
-                        <i class="fas fa-trash-alt me-2"></i> RÉINITIALISER TOUT
-                    </button>
-                </div>
-            </div>
-
         </div>
     </div>
 </div>
@@ -430,7 +417,6 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-    // --- ENREGISTREMENT DU SERVICE WORKER ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js')
@@ -439,14 +425,13 @@
         });
     }
 
-    // --- LOGIQUE BOUTON INSTALLATION ---
     let deferredPrompt;
     const installBtn = document.getElementById('pwa-install-btn');
 
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         deferredPrompt = e;
-        installBtn.style.display = 'flex'; // Affiche le bouton flottant
+        installBtn.style.display = 'flex';
     });
 
     installBtn.addEventListener('click', async () => {
@@ -565,7 +550,6 @@
 
     function saveEmployees() { 
         localStorage.setItem('smartloc_employees', JSON.stringify(employees)); 
-        // SYNCHRO CLOUD IMMÉDIATE
         if(window.SmartSync) window.SmartSync.push('employees');
     }
 
@@ -581,7 +565,6 @@
         };
         localStorage.setItem('smartloc_company', JSON.stringify(companyData));
         
-        // SYNCHRO CLOUD IMMÉDIATE
         if(window.SmartSync) {
             window.SmartSync.push('company');
             window.SmartSync.push('mastercode');
@@ -601,8 +584,6 @@
         document.getElementById('lock-action-area').innerHTML = `<button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()">
                             <i class="fas fa-unlock me-2"></i> DÉVERROUILLER
                         </button>`;
-        // Verrouillage spécifique du bouton de réinitialisation
-        document.getElementById('btn-critical-reset').disabled = true;
     }
 
     function unlockProcess() {
@@ -616,31 +597,6 @@
             showSuccessMessage("Mode modification activé !");
         } else { 
             alert("Code incorrect."); 
-        }
-    }
-
-    function criticalReset() {
-        if (confirm("ATTENTION : Cette action est IRREVERSIBLE. Toutes les données de l'agence seront supprimées. Continuer ?")) {
-            const code = prompt("Entrez le CODE MAÎTRE pour confirmer la destruction totale :");
-            if (code === masterCode) {
-                // Effacement local
-                const keysToRemove = [
-                    'smartloc_houses', 'smartloc_tenants', 'smartloc_payments', 
-                    'smartloc_employees', 'smartloc_company', 'smartloc_mastercode',
-                    'smartloc_auth', 'smartloc_agency_withdrawals', 'smartloc_archived_tenants'
-                ];
-                keysToRemove.forEach(k => localStorage.removeItem(k));
-
-                // Signal de réinitialisation pour le cloud via SmartSync
-                if (window.SmartSync && typeof window.SmartSync.wipe === 'function') {
-                    window.SmartSync.wipe();
-                }
-
-                alert("Application réinitialisée avec succès. Redirection...");
-                window.location.href = 'login.html';
-            } else {
-                alert("Code incorrect. Action annulée.");
-            }
         }
     }
 
