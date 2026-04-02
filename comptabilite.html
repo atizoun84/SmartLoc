@@ -359,7 +359,7 @@
 </script>
 
 <script>
-    // --- ENREGISTREMENT DU SERVICE WORKER ---
+    // --- PWA & UI ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js')
@@ -368,7 +368,6 @@
         });
     }
 
-    // --- LOGIQUE BOUTON INSTALLATION ---
     let deferredPrompt;
     const installBtn = document.getElementById('pwa-install-btn');
 
@@ -387,6 +386,7 @@
         }
     });
 
+    // --- VARIABLES GLOBALES ---
     let owners = [], tenants = [], payments = [], houses = [], expenses = [], agencyWithdrawals = [], ownerReversements = [];
     let masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
     let currentCommission = parseFloat(localStorage.getItem('smartloc_commission_rate')) || 10;

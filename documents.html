@@ -108,36 +108,20 @@
             width: 65px;
             height: 65px;
             border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            border: 3px solid white;
-            transition: 0.3s;
+            border: 3px solid white; transition: 0.3s;
         }
         .btn-float-agency:hover { transform: scale(1.1); color: white; }
 
         #pwa-install-btn {
-            position: fixed;
-            bottom: 110px;
-            right: 30px;
-            z-index: 1000;
-            background: var(--wa-light-green);
-            color: white;
-            border: none;
-            padding: 15px 20px;
-            border-radius: 50px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            display: none;
-            align-items: center;
-            font-weight: 500;
-            transition: 0.3s;
+            position: fixed; bottom: 110px; right: 30px; z-index: 1000;
+            background: var(--wa-light-green); color: white; border: none;
+            padding: 15px 20px; border-radius: 50px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: none; align-items: center; font-weight: 500; transition: 0.3s;
         }
 
-        #sync-status-container {
-            font-size: 0.7rem;
-            margin-top: 5px;
-        }
+        #sync-status-container { font-size: 0.7rem; margin-top: 5px; }
 
         @media print {
             body * { visibility: hidden; }
@@ -148,14 +132,8 @@
             #receipt-preview { border: none; padding: 10px; }
         }
 
-        .time-filters .btn-check:checked + .btn-outline-teal {
-            background-color: var(--wa-teal);
-            color: white;
-        }
-        .btn-outline-teal {
-            color: var(--wa-teal);
-            border-color: var(--wa-teal);
-        }
+        .time-filters .btn-check:checked + .btn-outline-teal { background-color: var(--wa-teal); color: white; }
+        .btn-outline-teal { color: var(--wa-teal); border-color: var(--wa-teal); }
     </style>
 </head>
 <body>
@@ -332,9 +310,9 @@
             const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
             if (localData !== null) set(ref(db, collectionName), localData);
         },
-        // Ajout de la méthode delete pour la cohérence
+        // Suppression cloud forcée pour synchronisation universelle
         deleteItem: (collectionName) => {
-             const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
+             const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`)) || [];
              set(ref(db, collectionName), localData);
         },
         uploadFile: async (fileList, type) => {
@@ -564,7 +542,6 @@
         else selectedIds.push(String(id));
     }
 
-    // FONCTION DE SUPPRESSION AVEC CODE MAÎTRE
     window.deleteEntry = function(type, id, event) {
         if(event) event.stopPropagation();
         const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
@@ -573,21 +550,23 @@
         if (String(code) === String(masterCode)) {
             if (!confirm("Confirmer la suppression définitive ?")) return;
 
+            let collectionToSync = "";
             if (type === 'payment') {
                 payments = payments.filter(p => String(p.id) !== String(id));
                 localStorage.setItem('smartloc_payments', JSON.stringify(payments));
-                if(window.SmartSync) window.SmartSync.deleteItem('payments');
+                collectionToSync = 'payments';
             } else if (type === 'expense') {
                 expenses = expenses.filter(e => String(e.id) !== String(id));
                 localStorage.setItem('smartloc_expenses', JSON.stringify(expenses));
-                if(window.SmartSync) window.SmartSync.deleteItem('expenses');
+                collectionToSync = 'expenses';
             } else if (type === 'withdrawal') {
                 agencyWithdrawals = agencyWithdrawals.filter(w => String(w.id) !== String(id));
                 localStorage.setItem('smartloc_agency_withdrawals', JSON.stringify(agencyWithdrawals));
-                if(window.SmartSync) window.SmartSync.deleteItem('agency_withdrawals');
+                collectionToSync = 'agency_withdrawals';
             }
 
             updateLocalVariables();
+            if(window.SmartSync && collectionToSync) window.SmartSync.deleteItem(collectionToSync);
             refreshHistory();
             alert("Opération supprimée avec succès.");
         } else if (code !== null) {

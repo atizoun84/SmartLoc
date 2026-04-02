@@ -356,20 +356,25 @@
     COLLECTIONS.forEach(col => {
         onValue(ref(db, col), (snapshot) => {
             const data = snapshot.val();
+            // MISE À JOUR CRITIQUE : Si data est null (suppression cloud), on vide le localStorage
             if (data !== null) {
                 localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                if(typeof refreshTable === 'function') refreshTable();
-                if(document.getElementById('archiveModal').classList.contains('show')) renderArchives();
+            } else {
+                localStorage.setItem(`smartloc_${col}`, JSON.stringify([]));
             }
+            
+            // Re-synchronisation forcée des variables globales et rafraîchissement de la vue
+            if (typeof syncData === 'function') syncData();
+            if (typeof refreshTable === 'function') refreshTable();
+            if (document.getElementById('archiveModal').classList.contains('show')) renderArchives();
         });
     });
 
     window.SmartSync = {
         push: (collectionName) => {
             const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-            if (localData !== null) {
-                set(ref(db, collectionName), localData);
-            }
+            // On pousse même si c'est vide pour propager la suppression
+            set(ref(db, collectionName), localData || []);
         }
     };
 

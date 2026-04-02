@@ -241,7 +241,6 @@
 
         function loadAgencyData() {
             const companyData = JSON.parse(localStorage.getItem('smartloc_company'));
-            // Note : smartloc_logo est géré localement ou via Firebase selon votre choix.
             const logoData = localStorage.getItem('smartloc_logo');
             const brandContainer = document.getElementById('logo-container');
             const brandName = document.getElementById('display-brand-name');
@@ -250,7 +249,6 @@
                 brandName.innerHTML = `<i class="bi bi-house-lock-fill me-2"></i>${companyData.name}`;
             }
 
-            // Nettoyage de l'ancien logo si présent pour éviter les doublons lors de la synchro
             const oldImg = brandContainer.querySelector('.dynamic-logo');
             if(oldImg) oldImg.remove();
 
@@ -267,7 +265,6 @@
             const select = document.getElementById('userRole');
             const employees = JSON.parse(localStorage.getItem('smartloc_employees')) || [];
             
-            // On garde l'option par défaut et l'option PDG
             select.innerHTML = `
                 <option value="">Sélectionnez un profil</option>
                 <option value="pdg">PDG / Administrateur</option>

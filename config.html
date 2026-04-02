@@ -550,6 +550,7 @@
 
     function saveEmployees() { 
         localStorage.setItem('smartloc_employees', JSON.stringify(employees)); 
+        // Signal de synchronisation global pour Firebase
         if(window.SmartSync) window.SmartSync.push('employees');
     }
 
@@ -565,6 +566,7 @@
         };
         localStorage.setItem('smartloc_company', JSON.stringify(companyData));
         
+        // Signal de synchronisation pour Firebase (les clés correspondent à sync.js)
         if(window.SmartSync) {
             window.SmartSync.push('company');
             window.SmartSync.push('mastercode');

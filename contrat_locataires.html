@@ -36,17 +36,21 @@
             'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants', 'owners'
         ];
 
-        // Écoute du Cloud vers le Local
+        // Écoute du Cloud vers le Local (Correction : gestion du null pour synchroniser les suppressions)
         COLLECTIONS.forEach(col => {
             const dbRef = ref(db, col);
             onValue(dbRef, (snapshot) => {
                 const data = snapshot.val();
+                // Si data est null, on vide le localstorage pour refléter la suppression dans le cloud
                 if (data !== null) {
                     localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                    // Rafraîchissement intelligent selon la page
-                    if(typeof window.renderTenants === 'function') window.renderTenants();
-                    if(typeof window.initFilters === 'function') window.initFilters();
+                } else {
+                    localStorage.setItem(`smartloc_${col}`, JSON.stringify([]));
                 }
+                
+                // Rafraîchissement intelligent selon la page
+                if(typeof window.renderTenants === 'function') window.renderTenants();
+                if(typeof window.initFilters === 'function') window.initFilters();
             });
         });
 
@@ -54,9 +58,8 @@
         window.SmartSync = {
             push: (collectionName) => {
                 const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-                if (localData !== null) {
-                    set(ref(db, collectionName), localData);
-                }
+                // On pousse la donnée, même si elle est vide (tableau vide), pour vider le cloud
+                set(ref(db, collectionName), localData || []);
             }
         };
 

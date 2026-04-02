@@ -294,7 +294,6 @@
             const data = snapshot.val();
             if (data !== null) {
                 localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                // Rafraîchir l'interface lors d'une mise à jour Cloud
                 if(typeof renderDueToday === 'function') renderDueToday();
                 if(typeof loadBranding === 'function') loadBranding();
             }

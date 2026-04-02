@@ -120,10 +120,8 @@
 
         .btn-logout { color: #ffc107 !important; font-weight: bold; }
         
-        /* Style spécifique pour le bouton fermer blanc sur fond vert */
         .btn-close-white { filter: invert(1) grayscale(100%) brightness(200%); position: absolute; right: 20px; top: 20px; }
 
-        /* --- STYLE PWA : BOUTON INSTALLATION --- */
         #pwa-install-btn {
             position: fixed;
             bottom: 30px;
@@ -143,7 +141,6 @@
         #pwa-install-btn:active { transform: scale(0.9); }
         #pwa-install-btn i { font-size: 1.2rem; margin-right: 10px; }
 
-        /* Status de Synchronisation */
         #sync-status-container {
             font-size: 0.75rem;
             margin-top: 5px;
@@ -361,7 +358,6 @@
             const data = snapshot.val();
             if (data !== null) {
                 localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                // Optionnel : rafraîchir les variables globales si nécessaire
                 if (col === 'tenants') tenants = data;
                 if (col === 'payments') payments = data;
                 if (col === 'houses') houses = data;
@@ -389,7 +385,6 @@
 </script>
 
 <script>
-    // --- ENREGISTREMENT DU SERVICE WORKER ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js')
@@ -398,7 +393,6 @@
         });
     }
 
-    // --- LOGIQUE BOUTON INSTALLATION ---
     let deferredPrompt;
     const installBtn = document.getElementById('pwa-install-btn');
 
@@ -458,29 +452,10 @@
                     if (tenant) {
                         selectTenant(tenant);
                     }
-                } else {
-                    setTimeout(() => {
-                        const firstResult = document.querySelector('#search-results .result-item');
-                        if (firstResult) firstResult.click();
-                    }, 300);
                 }
             }
             localStorage.removeItem('smartloc_search_trigger');
             localStorage.removeItem('smartloc_pending_payment_tenant');
-        }
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const tenantNameUrl = urlParams.get('search');
-        if (tenantNameUrl) {
-            const searchInput = document.getElementById('search-input');
-            if(searchInput) {
-                searchInput.value = tenantNameUrl;
-                searchTenants();
-                setTimeout(() => {
-                    const firstResult = document.querySelector('#search-results .result-item');
-                    if (firstResult) firstResult.click();
-                }, 300);
-            }
         }
     });
 
@@ -556,40 +531,30 @@
 
     function openPaymentModal(useAdvance) {
         if(!currentTenant) return;
-        
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
         const operatorName = auth ? (auth.name || auth.username || "Administrateur") : "Inconnu";
-
         isAdvancePayment = useAdvance;
         selectedMonths = [];
         document.getElementById('confirm-pin').value = ""; 
-        
         document.getElementById('modal-tenant-name').innerText = useAdvance ? "Déduction sur Avance" : "Finaliser le Paiement";
         document.getElementById('label-payment-type').innerText = useAdvance ? "Montant déduit :" : "Total à payer :";
         document.getElementById('modal-agent-name').innerText = operatorName;
         document.getElementById('modal-tenant-info').innerText = `${currentTenant.specificUnit} | Loyer: ${currentTenant.calculatedRent.toLocaleString('fr-FR')} F`;
         document.getElementById('modal-house-description').innerText = currentTenant.currentHouseDescription;
-
         const list = document.getElementById('modal-month-list');
         list.innerHTML = '';
-        
         const entryDate = new Date(currentTenant.entryDate || new Date());
         const today = new Date();
         const diffMonths = Math.max(1, (today.getFullYear() - entryDate.getFullYear()) * 12 + (today.getMonth() - entryDate.getMonth()) + 1);
-        
         const tenantPaymentsList = payments.filter(p => p.tenantId === currentTenant.id);
         const tenantPaidKeys = tenantPaymentsList.map(p => p.monthKey);
-        
         const totalPaidAmount = tenantPaymentsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
         const totalDue = diffMonths * currentTenant.calculatedRent;
         const totalUnpaidAmount = Math.max(0, totalDue - totalPaidAmount);
-        
         const paidMonthsCount = tenantPaidKeys.length;
         const unpaidMonthsCount = Math.max(0, diffMonths - paidMonthsCount);
-
         document.getElementById('modal-hist-paid').innerText = `${totalPaidAmount.toLocaleString('fr-FR')} F (${paidMonthsCount} mois)`;
         document.getElementById('modal-hist-unpaid').innerText = `${totalUnpaidAmount.toLocaleString('fr-FR')} F (${unpaidMonthsCount} mois)`;
-
         for (let i = 0; i < diffMonths; i++) {
             let d = new Date(entryDate.getFullYear(), entryDate.getMonth() + i, entryDate.getDate());
             let monthLabel = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -602,7 +567,6 @@
             if(!isPaid) item.onclick = () => toggleMonth(item, monthKey);
             list.appendChild(item);
         }
-
         const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
         modal.show();
     }
@@ -611,7 +575,6 @@
         const rent = currentTenant.calculatedRent;
         const advance = parseFloat(currentTenant.advance) || 0;
         const maxMonths = Math.floor(advance / rent);
-
         if(selectedMonths.includes(key)) {
             selectedMonths = selectedMonths.filter(m => m !== key);
             el.classList.remove('selected');
@@ -631,63 +594,41 @@
         const pinInput = document.getElementById('confirm-pin').value;
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
         const operatorName = auth ? (auth.name || auth.username || "Admin") : "Système";
-        
         if(!currentTenant.pin || pinInput !== String(currentTenant.pin)) {
-            alert("Code PIN locataire incorrect ou invalide ! Transaction annulée.");
+            alert("Code PIN locataire incorrect !");
             return;
         }
-
         if(selectedMonths.length === 0) {
-            alert("Veuillez sélectionner au moins un mois à régler.");
+            alert("Veuillez sélectionner au moins un mois.");
             return;
         }
-
-        const tenantPaymentsList = payments.filter(p => p.tenantId === currentTenant.id);
-        const existingKeys = tenantPaymentsList.map(p => p.monthKey);
-
-        let duplicataDetecte = false;
+        const existingKeys = payments.filter(p => p.tenantId === currentTenant.id).map(p => p.monthKey);
         selectedMonths.forEach(m => {
-            if (existingKeys.includes(m)) {
-                duplicataDetecte = true;
-                return;
+            if (!existingKeys.includes(m)) {
+                payments.push({
+                    id: Date.now() + Math.random(),
+                    tenantId: currentTenant.id,
+                    monthKey: m,
+                    amount: currentTenant.calculatedRent,
+                    type: isAdvancePayment ? 'avance_deduction' : 'direct',
+                    date: new Date().toISOString(),
+                    operator: operatorName
+                });
             }
-            
-            payments.push({
-                id: Date.now() + Math.random(),
-                tenantId: currentTenant.id,
-                monthKey: m,
-                amount: currentTenant.calculatedRent,
-                type: isAdvancePayment ? 'avance_deduction' : 'direct',
-                date: new Date().toISOString(),
-                operator: operatorName
-            });
         });
-
-        if(duplicataDetecte) {
-            alert("Certains mois sélectionnés sont déjà payés. La transaction a été filtrée.");
-        }
-
         if(isAdvancePayment) {
             const deduction = selectedMonths.length * currentTenant.calculatedRent;
             const tIndex = tenants.findIndex(t => t.id === currentTenant.id);
             if(tIndex !== -1) {
                 tenants[tIndex].advance = (parseFloat(tenants[tIndex].advance) || 0) - deduction;
                 localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
-                // SYNC CLOUD
                 if(window.SmartSync) window.SmartSync.push('tenants');
             }
         }
-
         localStorage.setItem('smartloc_payments', JSON.stringify(payments));
-        // SYNC CLOUD
         if(window.SmartSync) window.SmartSync.push('payments');
-        
-        const overlay = document.getElementById('success-overlay');
-        overlay.style.display = 'flex';
-        
-        setTimeout(() => {
-            location.reload();
-        }, 2000);
+        document.getElementById('success-overlay').style.display = 'flex';
+        setTimeout(() => { location.reload(); }, 2000);
     }
 </script>
 </body>
