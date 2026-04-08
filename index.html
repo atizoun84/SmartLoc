@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <script>
-        // --- SÉCURITÉ DE PAGE (SCRIPT UNIVERSEL ROBUSTE) ---
+        // --- SÉCURITÉ DE PAGE (PERSISTE POUR LA SESSION) ---
         (function() {
             const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
             const currentPage = window.location.pathname.split("/").pop() || "index.html";
@@ -179,9 +179,9 @@
                 <li class="nav-item"><a class="nav-link text-white px-3" href="contrats.html"><i class="fas fa-file-contract me-1"></i> Biens</a></li>
                 <li class="nav-item"><a class="nav-link text-white px-3" href="contrat_locataires.html"><i class="fas fa-users me-1"></i> Locataires</a></li>
                 <li class="nav-item"><a class="nav-link text-white px-3" href="paiements.html"><i class="fas fa-money-bill-wave me-1"></i> Paiements</a></li>
-                <li class="nav-item"><a class="nav-link text-white px-3" href="comptabilite.html"><i class="fas fa-calculator me-1"></i> Comptabilité</a></li>
+                <li class="nav-item" data-role="admin"><a class="nav-link text-white px-3" href="comptabilite.html"><i class="fas fa-calculator me-1"></i> Comptabilité</a></li>
                 <li class="nav-item"><a class="nav-link text-white px-3" href="recherche.html"><i class="fas fa-search me-1"></i> Recherche</a></li>
-                <li class="nav-item"><a class="nav-link text-white px-3" href="config.html"><i class="fas fa-cog me-1"></i> Paramètres</a></li>
+                <li class="nav-item" data-role="admin"><a class="nav-link text-white px-3" href="config.html"><i class="fas fa-cog me-1"></i> Paramètres</a></li>
                 <li class="nav-item"><a class="nav-link btn-logout px-3" href="#" onclick="logout()"><i class="fas fa-sign-out-alt me-1"></i> Quitter</a></li>
             </ul>
         </div>
@@ -268,7 +268,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
@@ -283,124 +283,56 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const COLLECTIONS = [
-        'tenants', 'houses', 'payments', 'company', 
-        'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants'
-    ];
+    let cloudData = {
+        tenants: [],
+        houses: [],
+        payments: [],
+        company: {}
+    };
 
-    COLLECTIONS.forEach(col => {
-        const dbRef = ref(db, col);
-        onValue(dbRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data !== null) {
-                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                if(typeof renderDueToday === 'function') renderDueToday();
-                if(typeof loadBranding === 'function') loadBranding();
-            }
-        });
-    });
-
-    window.SmartSync = {
-        push: (collectionName) => {
-            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-            if (localData !== null) {
-                set(ref(db, collectionName), localData);
-            }
+    const checkAndRender = () => {
+        if (cloudData.tenants.length >= 0 && cloudData.houses.length >= 0) {
+            renderDueToday(cloudData.tenants, cloudData.houses, cloudData.payments);
+            loadBranding(cloudData.company);
+            loadUserWelcome(cloudData.company);
         }
     };
+
+    onValue(ref(db, 'tenants'), (snap) => {
+        const val = snap.val();
+        cloudData.tenants = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+        checkAndRender();
+    });
+
+    onValue(ref(db, 'houses'), (snap) => {
+        const val = snap.val();
+        cloudData.houses = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+        checkAndRender();
+    });
+
+    onValue(ref(db, 'payments'), (snap) => {
+        const val = snap.val();
+        cloudData.payments = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+        checkAndRender();
+    });
+
+    onValue(ref(db, 'company'), (snap) => {
+        cloudData.company = snap.val() || {};
+        checkAndRender();
+    });
 
     onValue(ref(db, ".info/connected"), (snap) => {
         const statusContainer = document.getElementById('sync-status-container');
         if (statusContainer) {
             statusContainer.innerHTML = snap.val() === true 
-                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
-                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
+                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Connecté (Cloud)</span>`
+                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Mode Hors-ligne</span>`;
         }
     });
 </script>
 
 <script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SmartLoc SW enregistré !'))
-                .catch(err => console.log('Erreur SW:', err));
-        });
-    }
-
-    let deferredPrompt;
-    const installBtn = document.getElementById('pwa-install-btn');
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installBtn.style.display = 'flex';
-    });
-
-    installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') {
-                installBtn.style.display = 'none';
-            }
-            deferredPrompt = null;
-        }
-    });
-
-    document.addEventListener('DOMContentLoaded', function() {
-        applyMenuRestrictions();
-        loadBranding();
-        loadUserWelcome(); 
-        renderDueToday();
-    });
-
-    function logout() {
-        if(confirm("Voulez-vous vous déconnecter ?")) {
-            localStorage.removeItem('smartloc_auth');
-            window.location.href = 'login.html';
-        }
-    }
-
-    function applyMenuRestrictions() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        if (auth && auth.role === 'agent') {
-            const authorized = ['index.html', 'paiements.html', 'recherche.html'];
-            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
-                const link = li.querySelector('a');
-                if (link && !link.classList.contains('btn-logout')) {
-                    const href = link.getAttribute('href');
-                    if (!authorized.includes(href)) li.remove();
-                }
-            });
-        }
-    }
-
-    function loadBranding() {
-        const company = JSON.parse(localStorage.getItem('smartloc_company')) || { name: "SmartLoc Agencies" };
-        document.getElementById('header-name-display').innerText = company.name || "SmartLoc";
-        const headerLogo = document.getElementById('header-logo-display');
-        if(headerLogo) headerLogo.src = "logo maison.png";
-        document.getElementById('current-date-text').innerText = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-    }
-
-    function loadUserWelcome() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        const company = JSON.parse(localStorage.getItem('smartloc_company')) || {};
-        const display = document.getElementById('welcome-user-name');
-        if (!auth) return;
-        if (auth.role === 'admin') {
-            const pdgName = company.pdgName || auth.name || "Administrateur";
-            display.innerText = "M. " + pdgName;
-        } else {
-            display.innerText = (auth.name || "Utilisateur");
-        }
-    }
-
-    function renderDueToday() {
-        const tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
-        const houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
-        const payments = JSON.parse(localStorage.getItem('smartloc_payments')) || [];
+    function renderDueToday(tenants, houses, payments) {
         const tbody = document.getElementById('due-tenants-list');
         const today = new Date();
         const currentDay = today.getDate();
@@ -409,7 +341,7 @@
         let count = 0;
 
         tenants.forEach(t => {
-            if (!t.entryDate) return;
+            if (!t || !t.entryDate) return;
             const entryDate = new Date(t.entryDate);
             const payDay = entryDate.getDate();
 
@@ -417,13 +349,15 @@
                 const house = houses.find(h => String(h.id) === String(t.houseId));
                 const monthsSinceEntry = (today.getFullYear() - entryDate.getFullYear()) * 12 + (today.getMonth() - entryDate.getMonth());
                 const totalExpected = monthsSinceEntry + 1;
+                
                 const paidMonthsCount = payments.filter(p => String(p.tenantId) === String(t.id)).length;
                 const unpaidMonths = Math.max(0, totalExpected - paidMonthsCount);
 
                 if (unpaidMonths > 0) {
                     count++;
+                    // MODIFICATION ICI : Redirection vers recherche.html avec import du nom
                     tbody.innerHTML += `
-                        <tr onclick="window.location.href='paiements.html?search=${encodeURIComponent(t.name)}'">
+                        <tr onclick="window.location.href='recherche.html?import=${encodeURIComponent(t.name)}'">
                             <td class="ps-4">
                                 <div class="fw-bold text-dark">${t.name}</div>
                                 <small class="text-muted"><i class="fab fa-whatsapp text-success me-1"></i>${t.tel}</small>
@@ -441,13 +375,55 @@
                 }
             }
         });
+
         document.getElementById('total-due-today').innerText = count;
-        if(count === 0) {
-            document.getElementById('no-due-message').classList.remove('d-none');
+        const noMessage = document.getElementById('no-due-message');
+        count === 0 ? noMessage.classList.remove('d-none') : noMessage.classList.add('d-none');
+    }
+
+    function loadBranding(company) {
+        const name = company.name || "SmartLoc Agencies";
+        document.getElementById('header-name-display').innerText = name;
+        document.getElementById('current-date-text').innerText = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    function loadUserWelcome(company) {
+        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+        const display = document.getElementById('welcome-user-name');
+        if (!auth) return;
+        if (auth.role === 'admin') {
+            display.innerText = "M. " + (company.pdgName || auth.name || "Administrateur");
         } else {
-            document.getElementById('no-due-message').classList.add('d-none');
+            display.innerText = (auth.name || "Utilisateur");
         }
     }
+
+    function logout() {
+        if(confirm("Voulez-vous vous déconnecter ?")) {
+            localStorage.removeItem('smartloc_auth');
+            window.location.href = 'login.html';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+        if (auth && auth.role === 'agent') {
+            const authorized = ['index.html', 'paiements.html', 'recherche.html'];
+            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
+                const link = li.querySelector('a');
+                if (link && !link.classList.contains('btn-logout')) {
+                    if (!authorized.includes(link.getAttribute('href'))) li.remove();
+                }
+            });
+        }
+    });
+
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault(); deferredPrompt = e;
+        const btn = document.getElementById('pwa-install-btn');
+        if(btn) btn.style.display = 'flex';
+    });
 </script>
 </body>
 </html>

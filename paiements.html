@@ -23,7 +23,6 @@
                 return;
             }
 
-            // Restriction stricte pour les Agents
             if (auth.role === 'agent') {
                 const authorizedPages = ['index.html', 'paiements.html', 'recherche.html'];
                 if (!authorizedPages.includes(currentPage)) {
@@ -45,7 +44,6 @@
 
         body { background-color: var(--wa-bg); font-family: 'Roboto', sans-serif; color: #333; }
         
-        /* Header Uniformisé avec Config */
         .navbar-custom {
             background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal));
             color: white;
@@ -332,7 +330,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+    import { getDatabase, ref, onValue, set, push, update } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
@@ -347,117 +345,86 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const COLLECTIONS = [
-        'tenants', 'houses', 'payments', 'company', 
-        'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants'
-    ];
-
-    COLLECTIONS.forEach(col => {
-        const dbRef = ref(db, col);
-        onValue(dbRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data !== null) {
-                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                if (col === 'tenants') tenants = data;
-                if (col === 'payments') payments = data;
-                if (col === 'houses') houses = data;
-            }
-        });
-    });
-
-    window.SmartSync = {
-        push: (collectionName) => {
-            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-            if (localData !== null) {
-                set(ref(db, collectionName), localData);
-            }
-        }
+    // Définition des variables globales pour la page
+    window.dataStore = {
+        tenants: [],
+        payments: [],
+        houses: [],
+        company: {}
     };
 
+    // Écouteurs Cloud Temps Réel
+    onValue(ref(db, 'tenants'), (snapshot) => {
+        window.dataStore.tenants = snapshot.val() ? Object.values(snapshot.val()) : [];
+        
+        // --- MODIFICATION : Pré-remplissage automatique ---
+        const pendingTenantId = localStorage.getItem('smartloc_pending_payment_tenant');
+        if (pendingTenantId && window.dataStore.tenants.length > 0) {
+            const target = window.dataStore.tenants.find(t => String(t.id) === String(pendingTenantId));
+            if(target) {
+                selectTenant(target);
+                localStorage.removeItem('smartloc_pending_payment_tenant');
+                localStorage.removeItem('smartloc_search_trigger');
+            }
+        }
+        // --------------------------------------------------
+
+        if(window.currentTenant) {
+             const updated = window.dataStore.tenants.find(t => t.id === window.currentTenant.id);
+             if(updated) selectTenant(updated);
+        }
+    });
+
+    onValue(ref(db, 'payments'), (snapshot) => {
+        window.dataStore.payments = snapshot.val() ? Object.values(snapshot.val()) : [];
+        if(window.currentTenant) selectTenant(window.currentTenant);
+    });
+
+    onValue(ref(db, 'houses'), (snapshot) => {
+        window.dataStore.houses = snapshot.val() ? Object.values(snapshot.val()) : [];
+    });
+
+    onValue(ref(db, 'company'), (snapshot) => {
+        const data = snapshot.val();
+        if(data) {
+            window.dataStore.company = data;
+            document.getElementById('header-name-display').innerText = data.name || "SmartLoc";
+        }
+    });
+
+    // Statut de synchronisation
     onValue(ref(db, ".info/connected"), (snap) => {
         const statusContainer = document.getElementById('sync-status-container');
         if (statusContainer) {
             statusContainer.innerHTML = snap.val() === true 
-                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
+                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Cloud-First</span>`
                 : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
         }
     });
+
+    // Outil de sauvegarde global accessible par les fonctions JS classiques
+    window.cloudSave = {
+        addPayment: (paymentObj) => push(ref(db, 'payments'), paymentObj),
+        updateTenant: (tenantId, updates) => {
+            // Recherche de la clé Firebase du locataire pour l'update
+            onValue(ref(db, 'tenants'), (snapshot) => {
+                const data = snapshot.val();
+                for (let key in data) {
+                    if (data[key].id === tenantId) {
+                        update(ref(db, `tenants/${key}`), updates);
+                        break;
+                    }
+                }
+            }, { onlyOnce: true });
+        }
+    };
 </script>
 
 <script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SmartLoc SW enregistré !'))
-                .catch(err => console.log('Erreur SW:', err));
-        });
-    }
-
-    let deferredPrompt;
-    const installBtn = document.getElementById('pwa-install-btn');
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installBtn.style.display = 'flex';
-    });
-
-    installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') {
-                installBtn.style.display = 'none';
-            }
-            deferredPrompt = null;
-        }
-    });
-
-    let tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
-    let payments = JSON.parse(localStorage.getItem('smartloc_payments')) || [];
-    let houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
+    // Variables de travail
     let currentTenant = null;
     let selectedMonths = [];
     let isAdvancePayment = false;
-
-    document.addEventListener('DOMContentLoaded', function() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        
-        if (auth && auth.role === 'agent') {
-            const authorized = ['index.html', 'paiements.html', 'recherche.html'];
-            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
-                const link = li.querySelector('a');
-                if (link && !link.classList.contains('btn-logout')) {
-                    const href = link.getAttribute('href');
-                    if (!authorized.includes(href)) {
-                        li.remove();
-                    }
-                }
-            });
-        }
-        
-        loadBranding();
-
-        const searchTrigger = localStorage.getItem('smartloc_search_trigger');
-        const pendingTenantId = localStorage.getItem('smartloc_pending_payment_tenant');
-
-        if (searchTrigger) {
-            const searchInput = document.getElementById('search-input'); 
-            if (searchInput) {
-                searchInput.value = searchTrigger;
-                searchTenants();
-                
-                if (pendingTenantId) {
-                    const tenant = tenants.find(t => String(t.id) === String(pendingTenantId));
-                    if (tenant) {
-                        selectTenant(tenant);
-                    }
-                }
-            }
-            localStorage.removeItem('smartloc_search_trigger');
-            localStorage.removeItem('smartloc_pending_payment_tenant');
-        }
-    });
 
     function logout() {
         if(confirm("Voulez-vous vous déconnecter ?")) {
@@ -466,23 +433,20 @@
         }
     }
 
-    function loadBranding() {
-        const data = JSON.parse(localStorage.getItem('smartloc_company'));
-        if(data) document.getElementById('header-name-display').innerText = data.name;
-        const headerLogo = document.getElementById('header-logo-display');
-        if(headerLogo) headerLogo.src = "logo maison.png";
-    }
-
     function searchTenants() {
         const query = document.getElementById('search-input').value.toLowerCase();
         const resultsDiv = document.getElementById('search-results');
         resultsDiv.innerHTML = '';
         if(query.length < 1) return;
+
+        const tenants = window.dataStore.tenants;
         const filtered = tenants.filter(t => t.name.toLowerCase().includes(query));
+        
         if(filtered.length === 0) {
             resultsDiv.innerHTML = '<div class="no-result">Aucun locataire ne correspond à ce nom</div>';
             return;
         }
+
         filtered.forEach(t => {
             const div = document.createElement('div');
             div.className = 'result-item';
@@ -493,21 +457,22 @@
     }
 
     function selectTenant(tenant) {
-        currentTenant = tenant;
+        window.currentTenant = tenant;
+        const payments = window.dataStore.payments;
+        const houses = window.dataStore.houses;
+
         document.getElementById('search-results').innerHTML = '';
         document.getElementById('search-input').value = tenant.name;
         document.getElementById('main-card').style.display = 'block';
         
         let monthlyRent = parseFloat(tenant.monthlyRent) || 0;
-        currentTenant.calculatedRent = monthlyRent;
-
         const entryDate = new Date(tenant.entryDate || new Date());
         const today = new Date();
         const diffMonths = Math.max(1, (today.getFullYear() - entryDate.getFullYear()) * 12 + (today.getMonth() - entryDate.getMonth()) + 1);
         
         const tenantPayments = payments.filter(p => p.tenantId === tenant.id);
         const totalPaidAmount = tenantPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-        const totalDue = diffMonths * currentTenant.calculatedRent;
+        const totalDue = diffMonths * monthlyRent;
 
         const house = houses.find(h => String(h.id) === String(tenant.houseId)) || { location: "", description: "Aucune description" };
         const advance = parseFloat(tenant.advance) || 0;
@@ -517,7 +482,7 @@
         document.getElementById('det-job').innerText = tenant.job || "---";
         document.getElementById('det-tel').innerText = tenant.tel || "---";
         document.getElementById('det-house').innerText = (tenant.specificUnit || "") + (house.location ? " | " + house.location : "");
-        document.getElementById('det-rent').innerText = currentTenant.calculatedRent.toLocaleString('fr-FR') + ' F';
+        document.getElementById('det-rent').innerText = monthlyRent.toLocaleString('fr-FR') + ' F';
         document.getElementById('det-entry-day').innerText = entryDate.toLocaleDateString('fr-FR');
         document.getElementById('det-advance').innerText = advance.toLocaleString('fr-FR') + ' F';
         document.getElementById('det-advance-months').innerText = advMonths + ' mois';
@@ -526,55 +491,64 @@
         document.getElementById('det-total-unpaid').innerText = Math.max(0, (totalDue - totalPaidAmount)).toLocaleString('fr-FR') + ' F';
 
         document.getElementById('btn-use-advance').disabled = (advance <= 0 || monthlyRent <= 0);
-        currentTenant.currentHouseDescription = house.description || "Aucune description fournie.";
+        window.currentTenant.currentHouseDescription = house.description || "Aucune description fournie.";
+        window.currentTenant.calculatedRent = monthlyRent;
     }
 
     function openPaymentModal(useAdvance) {
-        if(!currentTenant) return;
+        if(!window.currentTenant) return;
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
         const operatorName = auth ? (auth.name || auth.username || "Administrateur") : "Inconnu";
+        
         isAdvancePayment = useAdvance;
         selectedMonths = [];
         document.getElementById('confirm-pin').value = ""; 
         document.getElementById('modal-tenant-name').innerText = useAdvance ? "Déduction sur Avance" : "Finaliser le Paiement";
         document.getElementById('label-payment-type').innerText = useAdvance ? "Montant déduit :" : "Total à payer :";
         document.getElementById('modal-agent-name').innerText = operatorName;
-        document.getElementById('modal-tenant-info').innerText = `${currentTenant.specificUnit} | Loyer: ${currentTenant.calculatedRent.toLocaleString('fr-FR')} F`;
-        document.getElementById('modal-house-description').innerText = currentTenant.currentHouseDescription;
+        document.getElementById('modal-tenant-info').innerText = `${window.currentTenant.specificUnit} | Loyer: ${window.currentTenant.calculatedRent.toLocaleString('fr-FR')} F`;
+        document.getElementById('modal-house-description').innerText = window.currentTenant.currentHouseDescription;
+        
         const list = document.getElementById('modal-month-list');
         list.innerHTML = '';
-        const entryDate = new Date(currentTenant.entryDate || new Date());
+        
+        const entryDate = new Date(window.currentTenant.entryDate || new Date());
         const today = new Date();
         const diffMonths = Math.max(1, (today.getFullYear() - entryDate.getFullYear()) * 12 + (today.getMonth() - entryDate.getMonth()) + 1);
-        const tenantPaymentsList = payments.filter(p => p.tenantId === currentTenant.id);
+        
+        const tenantPaymentsList = window.dataStore.payments.filter(p => p.tenantId === window.currentTenant.id);
         const tenantPaidKeys = tenantPaymentsList.map(p => p.monthKey);
+        
         const totalPaidAmount = tenantPaymentsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-        const totalDue = diffMonths * currentTenant.calculatedRent;
+        const totalDue = diffMonths * window.currentTenant.calculatedRent;
         const totalUnpaidAmount = Math.max(0, totalDue - totalPaidAmount);
-        const paidMonthsCount = tenantPaidKeys.length;
-        const unpaidMonthsCount = Math.max(0, diffMonths - paidMonthsCount);
-        document.getElementById('modal-hist-paid').innerText = `${totalPaidAmount.toLocaleString('fr-FR')} F (${paidMonthsCount} mois)`;
-        document.getElementById('modal-hist-unpaid').innerText = `${totalUnpaidAmount.toLocaleString('fr-FR')} F (${unpaidMonthsCount} mois)`;
+
+        document.getElementById('modal-hist-paid').innerText = `${totalPaidAmount.toLocaleString('fr-FR')} F (${tenantPaidKeys.length} mois)`;
+        document.getElementById('modal-hist-unpaid').innerText = `${totalUnpaidAmount.toLocaleString('fr-FR')} F`;
+
         for (let i = 0; i < diffMonths; i++) {
             let d = new Date(entryDate.getFullYear(), entryDate.getMonth() + i, entryDate.getDate());
             let monthLabel = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
             let dayLabel = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' });
             let monthKey = d.getFullYear() + '-' + (d.getMonth() + 1);
             let isPaid = tenantPaidKeys.includes(monthKey);
+            
             let item = document.createElement('div');
             item.className = `month-item ${isPaid ? 'paid' : 'unpaid'}`;
             item.innerHTML = `<span>${monthLabel} le ${dayLabel}</span> ${isPaid ? '<i class="fas fa-check-circle"></i>' : '<i class="far fa-circle"></i>'}`;
             if(!isPaid) item.onclick = () => toggleMonth(item, monthKey);
             list.appendChild(item);
         }
+        
         const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
         modal.show();
     }
 
     function toggleMonth(el, key) {
-        const rent = currentTenant.calculatedRent;
-        const advance = parseFloat(currentTenant.advance) || 0;
+        const rent = window.currentTenant.calculatedRent;
+        const advance = parseFloat(window.currentTenant.advance) || 0;
         const maxMonths = Math.floor(advance / rent);
+
         if(selectedMonths.includes(key)) {
             selectedMonths = selectedMonths.filter(m => m !== key);
             el.classList.remove('selected');
@@ -590,45 +564,55 @@
         document.getElementById('modal-total-amount').innerText = (total || 0).toLocaleString('fr-FR') + ' F';
     }
 
-    function processPayment() {
+    async function processPayment() {
         const pinInput = document.getElementById('confirm-pin').value;
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
         const operatorName = auth ? (auth.name || auth.username || "Admin") : "Système";
-        if(!currentTenant.pin || pinInput !== String(currentTenant.pin)) {
+
+        if(!window.currentTenant.pin || pinInput !== String(window.currentTenant.pin)) {
             alert("Code PIN locataire incorrect !");
             return;
         }
+
         if(selectedMonths.length === 0) {
             alert("Veuillez sélectionner au moins un mois.");
             return;
         }
-        const existingKeys = payments.filter(p => p.tenantId === currentTenant.id).map(p => p.monthKey);
-        selectedMonths.forEach(m => {
-            if (!existingKeys.includes(m)) {
-                payments.push({
+
+        // Enregistrement des paiements sur le Cloud
+        try {
+            for (const m of selectedMonths) {
+                await window.cloudSave.addPayment({
                     id: Date.now() + Math.random(),
-                    tenantId: currentTenant.id,
+                    tenantId: window.currentTenant.id,
                     monthKey: m,
-                    amount: currentTenant.calculatedRent,
+                    amount: window.currentTenant.calculatedRent,
                     type: isAdvancePayment ? 'avance_deduction' : 'direct',
                     date: new Date().toISOString(),
                     operator: operatorName
                 });
             }
-        });
-        if(isAdvancePayment) {
-            const deduction = selectedMonths.length * currentTenant.calculatedRent;
-            const tIndex = tenants.findIndex(t => t.id === currentTenant.id);
-            if(tIndex !== -1) {
-                tenants[tIndex].advance = (parseFloat(tenants[tIndex].advance) || 0) - deduction;
-                localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
-                if(window.SmartSync) window.SmartSync.push('tenants');
+
+            // Mise à jour de l'avance si nécessaire
+            if(isAdvancePayment) {
+                const deduction = selectedMonths.length * window.currentTenant.calculatedRent;
+                const newAdvance = (parseFloat(window.currentTenant.advance) || 0) - deduction;
+                window.cloudSave.updateTenant(window.currentTenant.id, { advance: newAdvance });
             }
+
+            // Affichage du succès
+            document.getElementById('success-overlay').style.display = 'flex';
+            
+            // --- MODIFICATION : Redirection intelligente ---
+            const nameToFilter = window.currentTenant.name;
+            setTimeout(() => { 
+                window.location.href = `recherche.html?import=${encodeURIComponent(nameToFilter)}`;
+            }, 2000);
+            // ------------------------------------------------
+
+        } catch (error) {
+            alert("Erreur lors de la transaction : " + error.message);
         }
-        localStorage.setItem('smartloc_payments', JSON.stringify(payments));
-        if(window.SmartSync) window.SmartSync.push('payments');
-        document.getElementById('success-overlay').style.display = 'flex';
-        setTimeout(() => { location.reload(); }, 2000);
     }
 </script>
 </body>

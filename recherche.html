@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <script>
-        // --- SÉCURITÉ DE PAGE (SCRIPT UNIVERSEL) ---
+        // --- SÉCURITÉ DE PAGE (SESSION UNIQUEMENT) ---
         (function() {
             const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
             const currentPage = window.location.pathname.split("/").pop() || "index.html";
@@ -99,7 +99,6 @@
         .table-hover tbody tr:hover { background-color: #e2efea !important; cursor: pointer; transition: 0.3s; }
 
         .modal-content { border-radius: 25px; border: none; }
-        .modal-dialog-compact { max-width: 550px; }
         .modal-header-pro { 
             background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal)); 
             color: white; border-radius: 25px 25px 0 0; padding: 1rem 1.5rem;
@@ -128,8 +127,6 @@
             font-weight: 500;
             transition: transform 0.3s;
         }
-        #pwa-install-btn:active { transform: scale(0.9); }
-        #sync-status-container { font-size: 0.8rem; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -137,7 +134,7 @@
 <nav class="navbar navbar-expand-lg navbar-custom shadow-sm sticky-top mb-5">
     <div class="container">
         <div class="d-flex align-items-center">
-            <img src="logo maison.png" alt="Logo" id="header-logo-display" class="company-logo" onerror="this.style.display='none'">
+            <img src="logo maison.png" alt="Logo" id="header-logo-display" class="company-logo">
             <div class="brand-container">
                 <a href="index.html" class="company-name" id="header-name-display">SmartLoc</a>
                 <span class="sub-page-title">Recherche & Finance</span>
@@ -203,12 +200,8 @@
     </div>
 </div>
 
-<button id="pwa-install-btn">
-    <i class="fas fa-download me-2"></i> Installer l'App
-</button>
-
 <div class="modal fade" id="detailModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-compact">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content shadow-lg">
             <div class="modal-header-pro border-0 d-flex justify-content-between align-items-center">
                 <h5 class="modal-title fw-bold" id="m-title">Détails du Bien</h5>
@@ -225,7 +218,6 @@
                         <div class="info-value" id="m-owner">---</div>
                         <div class="info-label">Locataire Actuel</div>
                         <div class="info-value fw-bold" id="m-tenant-name">LIBRE</div>
-                        <div id="m-tenant-extra-info"></div>
                     </div>
                     <div class="col-5 ps-3 text-center">
                         <div class="info-label">Loyer Mensuel</div>
@@ -333,7 +325,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+    import { getDatabase, ref, onValue, set, push, remove } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
@@ -348,107 +340,63 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
+    // Variables globales réelles (Data en mémoire vive issue du Cloud)
+    window.cloudData = {
+        owners: [], houses: [], tenants: [], payments: [], archivedTenants: [], company: {}, mastercode: "1234"
+    };
+
     const COLLECTIONS = [
-        'tenants', 'houses', 'payments', 'company', 
-        'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants', 'owners'
+        'tenants', 'houses', 'payments', 'company', 'archived_tenants', 'owners', 'mastercode'
     ];
 
+    // Initialisation des écouteurs temps réel
     COLLECTIONS.forEach(col => {
         onValue(ref(db, col), (snapshot) => {
             const data = snapshot.val();
-            // MISE À JOUR CRITIQUE : Si data est null (suppression cloud), on vide le localStorage
-            if (data !== null) {
-                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-            } else {
-                localStorage.setItem(`smartloc_${col}`, JSON.stringify([]));
-            }
+            const key = col === 'archived_tenants' ? 'archivedTenants' : col;
             
-            // Re-synchronisation forcée des variables globales et rafraîchissement de la vue
-            if (typeof syncData === 'function') syncData();
-            if (typeof refreshTable === 'function') refreshTable();
+            // Transformation objet Firebase en Array si nécessaire
+            if (data && typeof data === 'object' && !Array.isArray(data) && col !== 'company' && col !== 'mastercode') {
+                window.cloudData[key] = Object.keys(data).map(id => ({ id, ...data[id] }));
+            } else {
+                window.cloudData[key] = data || (col === 'company' ? {} : (col === 'mastercode' ? "1234" : []));
+            }
+
+            // Rafraîchissement spécifique à la page
+            if (col === 'company') updateBranding();
+            refreshTable(); 
             if (document.getElementById('archiveModal').classList.contains('show')) renderArchives();
         });
     });
 
-    window.SmartSync = {
-        push: (collectionName) => {
-            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-            // On pousse même si c'est vide pour propager la suppression
-            set(ref(db, collectionName), localData || []);
-        }
-    };
-
+    // Gestion de la connexion
     onValue(ref(db, ".info/connected"), (snap) => {
-        const statusContainer = document.getElementById('sync-status-container');
-        if (statusContainer) {
-            statusContainer.innerHTML = snap.val() === true 
-                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
-                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
-        }
+        const container = document.getElementById('sync-status-container');
+        if (!container) return;
+        container.innerHTML = snap.val() ? 
+            `<span style="font-size: 0.65rem; color: #25D366; font-weight: bold;"><i class="fas fa-cloud me-1"></i> Temps Réel (Cloud)</span>` : 
+            `<span style="font-size: 0.65rem; color: #ffc107; font-weight: bold;"><i class="fas fa-cloud-slash me-1"></i> Mode Hors-ligne</span>`;
     });
+
+    // Exposition des outils d'écriture Cloud
+    window.CloudSync = {
+        push: (col, data) => push(ref(db, col), data),
+        set: (path, data) => set(ref(db, path), data),
+        remove: (path) => remove(ref(db, path))
+    };
 </script>
 
 <script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').catch(err => console.log('Erreur SW:', err));
-        });
-    }
+    let selectedItem = null;
 
-    let deferredPrompt;
-    const installBtn = document.getElementById('pwa-install-btn');
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installBtn.style.display = 'flex';
-    });
-
-    installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') installBtn.style.display = 'none';
-            deferredPrompt = null;
-        }
-    });
-
-    let owners = [], houses = [], tenants = [], payments = [], archivedTenants = [], selectedItem = null;
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        if (auth && auth.role === 'agent') {
-            document.querySelectorAll('[data-role="admin"]').forEach(el => el.remove());
-        }
-        syncData();
-        loadBranding();
-        refreshTable();
-    });
-
-    function logout() {
-        if(confirm("Voulez-vous vous déconnecter ?")) {
-            localStorage.removeItem('smartloc_auth');
-            window.location.href = 'login.html';
-        }
-    }
-
-    function syncData() {
-        owners = JSON.parse(localStorage.getItem('smartloc_owners')) || [];
-        houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
-        tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
-        payments = JSON.parse(localStorage.getItem('smartloc_payments')) || [];
-        archivedTenants = JSON.parse(localStorage.getItem('smartloc_archived_tenants')) || [];
-    }
-
-    function loadBranding() {
-        const data = JSON.parse(localStorage.getItem('smartloc_company'));
-        if(data) document.getElementById('header-name-display').innerText = (data.name || "SmartLoc");
-        const headerLogo = document.getElementById('header-logo-display');
-        if(headerLogo) headerLogo.src = "logo maison.png";
+    function updateBranding() {
+        const data = window.cloudData.company;
+        if(data && data.name) document.getElementById('header-name-display').innerText = data.name;
     }
 
     function calculateFinance(t) {
         if(!t) return null;
+        const payments = window.cloudData.payments || [];
         const rent = parseFloat(t.monthlyRent) || 0;
         const entryDate = new Date(t.entryDate || new Date());
         const today = new Date();
@@ -465,15 +413,22 @@
     }
 
     function refreshTable() {
-        syncData();
         const query = document.getElementById('global-search').value.toLowerCase();
         const tbody = document.getElementById('master-table-body');
         if(!tbody) return;
         tbody.innerHTML = '';
 
+        const houses = window.cloudData.houses || [];
+        const owners = window.cloudData.owners || [];
+        const tenants = window.cloudData.tenants || [];
+        
+        let foundCount = 0;
+
         houses.forEach(h => {
             let unitsList = [];
-            try { unitsList = JSON.parse(h.units); } catch(e) { unitsList = []; }
+            try { unitsList = typeof h.units === 'string' ? JSON.parse(h.units) : h.units; } catch(e) { unitsList = []; }
+            if(!Array.isArray(unitsList)) unitsList = [];
+
             const owner = owners.find(o => String(o.id) === String(h.ownerId));
             const ownerName = owner ? (owner.name || owner.designation || "Inconnu") : "Inconnu";
 
@@ -486,17 +441,12 @@
                 const searchStr = `${u.name} ${h.location} ${ownerName} ${tenantName} ${h.description || ''}`.toLowerCase();
                 if(!searchStr.includes(query)) return;
 
+                foundCount++;
                 const tr = document.createElement('tr');
                 tr.onclick = () => showModal(h, u, tenant);
                 tr.innerHTML = `
-                    <td class="ps-4">
-                        <div class="fw-bold">${u.name}</div>
-                        <small class="text-muted">Réf: ${h.id}</small>
-                    </td>
-                    <td>
-                        <div class="small fw-bold">${ownerName}</div>
-                        <div class="badge bg-light text-muted border" style="font-size:0.7rem">${h.location || 'N/A'}</div>
-                    </td>
+                    <td class="ps-4"><div class="fw-bold">${u.name}</div><small class="text-muted">Réf: ${h.id}</small></td>
+                    <td><div class="small fw-bold">${ownerName}</div><div class="badge bg-light text-muted border" style="font-size:0.7rem">${h.location || 'N/A'}</div></td>
                     <td class="text-center">${isOccupied ? `<span class="fw-bold text-dark">${fin.entryDay}</span>` : '---'}</td>
                     <td class="text-center"><span class="badge ${isOccupied ? 'bg-danger' : 'bg-success'}">${isOccupied ? 'OCCUPÉ' : 'LIBRE'}</span></td>
                     <td>${isOccupied ? `<div class="fw-bold small">${tenantName}</div><div class="text-muted" style="font-size:0.7rem">${tenant.tel || ''}</div>` : '<em class="text-muted small">Aucun</em>'}</td>
@@ -508,17 +458,42 @@
                 tbody.appendChild(tr);
             });
         });
+
+        if (foundCount === 0 && query !== "") {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted"><em>Aucun locataire ou unité ne correspond à ce nom.</em></td></tr>`;
+        }
     }
 
+    // Déclencher l'importation automatique au chargement
+    window.addEventListener('load', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const importName = urlParams.get('import');
+        
+        if (importName) {
+            // 1. Mettre le nom dans le champ de recherche
+            const searchInput = document.getElementById('global-search');
+            if(searchInput) {
+                searchInput.value = importName;
+                // 2. Lancer la recherche pour filtrer le tableau
+                refreshTable();
+                
+                // 3. Attendre un court instant que le tableau se génère et cliquer sur la ligne
+                setTimeout(() => {
+                    const firstRow = document.querySelector('#master-table-body tr');
+                    if(firstRow) firstRow.click();
+                }, 800); // Délai ajusté pour assurer le rendu Firebase
+            }
+        }
+    });
+
     function showModal(house, unit, tenant) {
-        syncData();
         selectedItem = { house, unit, tenant };
-        const owner = owners.find(o => String(o.id) === String(house.ownerId));
+        const owner = (window.cloudData.owners || []).find(o => String(o.id) === String(house.ownerId));
         const ownerName = owner ? (owner.name || owner.designation) : "Inconnu";
         
         document.getElementById('m-house-full').innerText = `${unit.name} - ${house.location || 'N/A'}`;
         document.getElementById('m-description').innerText = house.description || "Aucune description.";
-        document.getElementById('m-owner').innerHTML = `${ownerName} <br> <small class="text-success"><i class="fab fa-whatsapp"></i> ${owner ? owner.wa || owner.whatsapp : 'N/A'}</small>`;
+        document.getElementById('m-owner').innerHTML = `${ownerName} <br> <small class="text-success"><i class="fab fa-whatsapp"></i> ${owner ? (owner.wa || owner.whatsapp || 'N/A') : 'N/A'}</small>`;
         document.getElementById('m-rent').innerText = parseFloat(unit.price).toLocaleString() + " F";
         
         const statusBadge = document.getElementById('status-badge-container');
@@ -542,8 +517,6 @@
             if(auth.role === 'admin') {
                 btnTerm.classList.remove('d-none');
                 btnRefund.classList.toggle('d-none', fin.advance <= 0);
-            } else {
-                btnTerm.classList.add('d-none'); btnRefund.classList.add('d-none');
             }
         } else {
             document.getElementById('m-tenant-name').innerText = "LIBRE";
@@ -564,65 +537,43 @@
     }
 
     function terminateContract() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
-        if (auth.role !== 'admin') return alert("Seul l'administrateur peut effectuer cette action.");
+        const pin = prompt("Code PIN requis pour libérer l'unité :");
+        if (String(pin) !== String(window.cloudData.mastercode)) return alert("Code incorrect.");
 
-        const code = prompt("Action sensible : Entrez le code PIN pour libérer l'unité :");
-        if (String(code) === String(masterCode)) {
-            const t = selectedItem.tenant;
-            const fin = calculateFinance(t);
-            const owner = owners.find(o => String(o.id) === String(selectedItem.house.ownerId));
-            
-            const archive = {
-                id: Date.now().toString(),
-                name: t.name,
-                unitName: selectedItem.unit.name,
-                ownerName: owner ? owner.name : "Inconnu",
-                houseDescription: selectedItem.house.description,
-                exitDate: new Date().toLocaleDateString('fr-FR'),
-                finalDebt: fin.debt
-            };
+        const t = selectedItem.tenant;
+        const fin = calculateFinance(t);
+        const owners = window.cloudData.owners || [];
+        const owner = owners.find(o => String(o.id) === String(selectedItem.house.ownerId));
+        
+        const archiveData = {
+            name: t.name,
+            unitName: selectedItem.unit.name,
+            ownerName: owner ? owner.name : "Inconnu",
+            houseDescription: selectedItem.house.description,
+            exitDate: new Date().toLocaleDateString('fr-FR'),
+            finalDebt: fin.debt,
+            timestamp: Date.now()
+        };
 
-            archivedTenants.push(archive);
-            localStorage.setItem('smartloc_archived_tenants', JSON.stringify(archivedTenants));
-            if(window.SmartSync) window.SmartSync.push('archived_tenants');
-            
-            tenants = tenants.filter(item => String(item.id) !== String(t.id));
-            localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
-            if(window.SmartSync) window.SmartSync.push('tenants');
-            
-            bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
-            refreshTable();
-            alert("Contrat clôturé et archivé.");
-        } else if (code !== null) alert("Code incorrect.");
+        window.CloudSync.push('archived_tenants', archiveData);
+        window.CloudSync.remove(`tenants/${t.id}`);
+        
+        bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
+        alert("Contrat clôturé et archivé sur le Cloud.");
     }
 
     function refundAdvance() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        if (auth.role !== 'admin') return alert("Action réservée au PDG.");
+        const pin = prompt("Code PIN pour remboursement d'avance :");
+        if (String(pin) !== String(window.cloudData.mastercode)) return alert("Code incorrect.");
 
-        const code = prompt("Code PIN requis pour le remboursement d'avance :");
-        const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
-        if (String(code) === String(masterCode)) {
-            const index = tenants.findIndex(t => String(t.id) === String(selectedItem.tenant.id));
-            if (index !== -1) {
-                tenants[index].advance = 0;
-                localStorage.setItem('smartloc_tenants', JSON.stringify(tenants));
-                if(window.SmartSync) window.SmartSync.push('tenants');
-                alert("Avance remboursée.");
-                bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
-                refreshTable();
-            }
-        }
+        window.CloudSync.set(`tenants/${selectedItem.tenant.id}/advance`, 0);
+        alert("Avance remise à zéro.");
+        bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
     }
-    
+
     function openArchive() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        if(auth.role === 'admin' || confirm("Accès restreint au PDG. Continuer en lecture seule ?")) {
-            renderArchives();
-            new bootstrap.Modal(document.getElementById('archiveModal')).show();
-        }
+        renderArchives();
+        new bootstrap.Modal(document.getElementById('archiveModal')).show();
     }
 
     function renderArchives() {
@@ -630,11 +581,11 @@
         if(!body) return;
         body.innerHTML = '';
         const search = document.getElementById('archive-search').value.toLowerCase();
+        const archives = window.cloudData.archivedTenants || [];
         const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
 
-        archivedTenants.slice().reverse().forEach(a => {
-            const searchStr = `${a.name} ${a.unitName}`.toLowerCase();
-            if(!searchStr.includes(search)) return;
+        archives.slice().sort((a,b) => b.timestamp - a.timestamp).forEach(a => {
+            if(!`${a.name} ${a.unitName}`.toLowerCase().includes(search)) return;
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><div class="fw-bold">${a.name}</div></td>
@@ -650,14 +601,18 @@
     }
 
     function deleteArchive(id) {
-        if(confirm("Supprimer définitivement cette archive ?")) {
-            archivedTenants = archivedTenants.filter(a => String(a.id) !== String(id));
-            localStorage.setItem('smartloc_archived_tenants', JSON.stringify(archivedTenants));
-            if(window.SmartSync) window.SmartSync.push('archived_tenants');
-            renderArchives();
+        if(confirm("Supprimer cette archive du Cloud ?")) {
+            window.CloudSync.remove(`archived_tenants/${id}`);
         }
     }
 
+    function logout() {
+        if(confirm("Voulez-vous vous déconnecter ?")) {
+            localStorage.removeItem('smartloc_auth');
+            window.location.href = 'login.html';
+        }
+    }
+    
     function filterArchives() { renderArchives(); }
 </script>
 </body>

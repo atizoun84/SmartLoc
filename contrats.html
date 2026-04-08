@@ -388,115 +388,57 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-<script type="module">
-    // --- PROTOCOLE DE SYNCHRONISATION SMARTLOC (AMÉLIORÉ POUR RÉPERCUSSION GLOBALE) ---
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
-        authDomain: "beci-negoce.firebaseapp.com",
-        databaseURL: "https://beci-negoce-default-rtdb.europe-west1.firebasedatabase.app/",
-        projectId: "beci-negoce",
-        storageBucket: "beci-negoce.firebasestorage.app",
-        messagingSenderId: "622021997082",
-        appId: "1:622021997082:web:9bc402604c65c91f3857a3"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    const COLLECTIONS = [
-        'tenants', 'houses', 'owners', 'payments', 'company', 
-        'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants'
-    ];
-
-    COLLECTIONS.forEach(col => {
-        const dbRef = ref(db, col);
-        onValue(dbRef, (snapshot) => {
-            const data = snapshot.val();
-            // Correction ici : Si data est null dans le cloud, on vide le local pour répercuter la suppression
-            if (data !== null) {
-                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-            } else {
-                localStorage.removeItem(`smartloc_${col}`);
-            }
-            
-            // Rafraîchir les éléments visuels de la page contrats.html
-            if(col === 'owners') window.updateOwnerSelect();
-            if(col === 'houses') window.renderHouses();
-            if(col === 'company') window.loadBranding();
-        });
-    });
-
-    window.SmartSync = {
-        push: (collectionName) => {
-            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-            // Si localData est null (suite à suppression), on envoie null à Firebase pour effacer le noeud
-            set(ref(db, collectionName), localData);
-        }
-    };
-
-    onValue(ref(db, ".info/connected"), (snap) => {
-        const statusContainer = document.getElementById('sync-status-container');
-        if (statusContainer) {
-            statusContainer.innerHTML = snap.val() === true 
-                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
-                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
-        }
-    });
-</script>
+<script type="module" src="sync.js"></script>
 
 <script>
-    // --- LOGIQUE APPLICATION ---
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SmartLoc SW enregistré !'))
-                .catch(err => console.log('Erreur SW:', err));
-        });
-    }
-
-    let deferredPrompt;
-    const installBtn = document.getElementById('pwa-install-btn');
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installBtn.style.display = 'flex';
-    });
-
-    installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') installBtn.style.display = 'none';
-            deferredPrompt = null;
-        }
-    });
-
+    // --- VARIABLES GLOBALES (Source : Cloud) ---
     let masterCode = "1234";
-    let owners = [];
-    let houses = [];
+    let owners = {}; // Changé en objet pour mapping ID direct Firebase
+    let houses = {};
     let tempUnits = []; 
 
+    // --- INITIALISATION AU CHARGEMENT ---
     document.addEventListener('DOMContentLoaded', function() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        if (auth && auth.role === 'agent') {
-            const authorized = ['index.html', 'paiements.html'];
-            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
-                const link = li.querySelector('a');
-                if (link && !link.classList.contains('btn-logout')) {
-                    if (!authorized.includes(link.getAttribute('href'))) li.remove();
-                }
-            });
-        }
-        syncAllData();
-        loadBranding();
-        updateOwnerSelect();
-        updateLocationDatalist();
-        renderHouses();
+        const checkSync = setInterval(() => {
+            if (window.SmartSync) {
+                clearInterval(checkSync);
+                initCloudListeners();
+            }
+        }, 100);
+        
         lockAllFields();
     });
+
+    function initCloudListeners() {
+        const { db, ref, onValue } = window.SmartSync;
+
+        // 1. Branding / Header
+        onValue(ref(db, 'company'), (snap) => {
+            const data = snap.val();
+            if(data) {
+                document.getElementById('header-name-display').innerText = (data.name || data.designation || "SmartLoc");
+            }
+        });
+
+        // 2. MasterCode
+        onValue(ref(db, 'mastercode'), (snap) => {
+            masterCode = snap.val() || "1234";
+        });
+
+        // 3. Propriétaires (Lecture Temps Réel)
+        onValue(ref(db, 'owners'), (snap) => {
+            owners = snap.val() || {};
+            updateOwnerSelect();
+            renderHouses(); // Re-render car les noms de proprio peuvent changer
+        });
+
+        // 4. Biens / Maisons (Lecture Temps Réel)
+        onValue(ref(db, 'houses'), (snap) => {
+            houses = snap.val() || {};
+            renderHouses();
+            updateLocationDatalist();
+        });
+    }
 
     function logout() {
         if(confirm("Quitter la session ?")) {
@@ -505,18 +447,7 @@
         }
     }
 
-    function syncAllData() {
-        owners = JSON.parse(localStorage.getItem('smartloc_owners')) || [];
-        houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
-        masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
-    }
-
-    window.loadBranding = function() {
-        const data = JSON.parse(localStorage.getItem('smartloc_company'));
-        if(data) document.getElementById('header-name-display').innerText = (data.name || data.designation || "SmartLoc");
-        document.getElementById('header-logo-display').src = "logo maison.png";
-    }
-
+    // --- ACTIONS PROPRIÉTAIRE ---
     window.addOwner = function() {
         const name = document.getElementById('owner-name').value;
         const wa = document.getElementById('owner-wa').value;
@@ -524,28 +455,25 @@
 
         if(!name || !wa) return alert("Nom et WhatsApp requis");
 
-        const newOwner = { id: Date.now().toString(), name, wa, tel };
-        owners.push(newOwner);
-        localStorage.setItem('smartloc_owners', JSON.stringify(owners));
+        const { db, ref, push } = window.SmartSync;
+        const newOwner = { name, wa, tel };
         
-        // SYNC FIREBASE
-        if(window.SmartSync) window.SmartSync.push('owners');
-
-        updateOwnerSelect();
-        document.getElementById('owner-name').value = "";
-        document.getElementById('owner-wa').value = "";
-        document.getElementById('owner-tel').value = "";
-        showBriefSuccess();
+        push(ref(db, 'owners'), newOwner).then(() => {
+            document.getElementById('owner-name').value = "";
+            document.getElementById('owner-wa').value = "";
+            document.getElementById('owner-tel').value = "";
+            showBriefSuccess();
+        });
     }
 
     window.updateOwnerSelect = function() {
-        syncAllData();
         const select = document.getElementById('house-owner-select');
         if(!select) return;
         select.innerHTML = '<option value="">Choisir un propriétaire...</option>';
-        owners.forEach(o => {
+        Object.keys(owners).forEach(id => {
+            const o = owners[id];
             const oName = (o.name || o.designation || "Inconnu");
-            select.innerHTML += `<option value="${o.id}">${oName}</option>`;
+            select.innerHTML += `<option value="${id}">${oName}</option>`;
         });
     }
 
@@ -556,22 +484,16 @@
         
         const code = prompt("Code PIN pour supprimer ce propriétaire :");
         if(String(code) === String(masterCode)) {
-            owners = owners.filter(o => String(o.id) !== String(ownerId));
-            localStorage.setItem('smartloc_owners', JSON.stringify(owners));
-            
-            if(window.SmartSync) window.SmartSync.push('owners');
-            
-            updateOwnerSelect();
-            renderHouses();
-            alert("Propriétaire supprimé.");
+            const { db, ref, remove } = window.SmartSync;
+            remove(ref(db, `owners/${ownerId}`)).then(() => alert("Propriétaire supprimé."));
         } else { alert("Code incorrect."); }
     }
 
+    // --- ACTIONS MAISONS / UNITÉS ---
     window.updateLocationDatalist = function() {
-        syncAllData();
         const list = document.getElementById('location-suggestions');
         if(!list) return;
-        const locations = [...new Set(houses.map(h => h.location))];
+        const locations = [...new Set(Object.values(houses).map(h => h.location))];
         list.innerHTML = locations.map(loc => `<option value="${loc}">`).join('');
     }
 
@@ -602,7 +524,7 @@
 
     window.handleHouseAction = function() {
         const editId = document.getElementById('edit-house-id').value;
-        if (editId) { updateHouse(String(editId)); } else { addHouse(); }
+        if (editId) { updateHouse(editId); } else { addHouse(); }
     }
 
     function addHouse() {
@@ -613,28 +535,23 @@
 
         if(!ownerId || !location || !sigDate || tempUnits.length === 0) return alert("Remplissez tous les champs");
 
+        const { db, ref, push } = window.SmartSync;
         const house = { 
-            id: Date.now().toString(), 
             ownerId: String(ownerId), 
             units: JSON.stringify(tempUnits), 
             location, description, sigDate 
         };
-        houses.push(house);
-        localStorage.setItem('smartloc_houses', JSON.stringify(houses));
-        
-        if(window.SmartSync) window.SmartSync.push('houses');
 
-        resetHouseForm();
-        renderHouses();
-        updateLocationDatalist();
-        showBriefSuccess();
+        push(ref(db, 'houses'), house).then(() => {
+            resetHouseForm();
+            showBriefSuccess();
+        });
     }
 
     window.editHouse = function(id) {
-        syncAllData();
-        const house = houses.find(h => String(h.id) === String(id));
+        const house = houses[id];
         if (!house) return;
-        document.getElementById('edit-house-id').value = String(house.id);
+        document.getElementById('edit-house-id').value = id;
         document.getElementById('house-owner-select').value = String(house.ownerId);
         document.getElementById('house-location').value = house.location;
         document.getElementById('house-description').value = house.description || "";
@@ -646,21 +563,19 @@
     }
 
     function updateHouse(id) {
-        const index = houses.findIndex(h => String(h.id) === String(id));
-        if (index === -1) return;
-        houses[index].ownerId = String(document.getElementById('house-owner-select').value);
-        houses[index].location = document.getElementById('house-location').value;
-        houses[index].description = document.getElementById('house-description').value;
-        houses[index].sigDate = document.getElementById('contract-date').value;
-        houses[index].units = JSON.stringify(tempUnits);
+        const { db, ref, set } = window.SmartSync;
+        const updatedHouse = {
+            ownerId: document.getElementById('house-owner-select').value,
+            location: document.getElementById('house-location').value,
+            description: document.getElementById('house-description').value,
+            sigDate: document.getElementById('contract-date').value,
+            units: JSON.stringify(tempUnits)
+        };
 
-        localStorage.setItem('smartloc_houses', JSON.stringify(houses));
-        
-        if(window.SmartSync) window.SmartSync.push('houses');
-
-        resetHouseForm();
-        renderHouses();
-        showBriefSuccess();
+        set(ref(db, `houses/${id}`), updatedHouse).then(() => {
+            resetHouseForm();
+            showBriefSuccess();
+        });
     }
 
     function resetHouseForm() {
@@ -674,15 +589,23 @@
     }
 
     window.renderHouses = function() {
-        syncAllData();
         const tbody = document.getElementById('houses-list');
         if(!tbody) return;
         tbody.innerHTML = "";
-        houses.forEach(h => {
-            const owner = owners.find(o => String(o.id) === String(h.ownerId));
-            const ownerName = owner ? (owner.name || "Propriétaire Inconnu") : "Non trouvé";
+        
+        const keys = Object.keys(houses);
+        if(keys.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='7' class='text-center py-4 text-muted'>Aucun bien enregistré dans le cloud.</td></tr>";
+            return;
+        }
+
+        keys.forEach(id => {
+            const h = houses[id];
+            const owner = owners[h.ownerId];
+            const ownerName = owner ? (owner.name || "Propriétaire Inconnu") : "Chargement...";
             let unitsList = [];
             try { unitsList = JSON.parse(h.units); } catch(e) { unitsList = []; }
+            
             unitsList.forEach(u => {
                 tbody.innerHTML += `
                     <tr>
@@ -693,8 +616,8 @@
                         <td>${ownerName}</td>
                         <td>${h.sigDate}</td>
                         <td class="text-center">
-                            <button class="btn btn-sm btn-outline-primary border-0" onclick="editHouse('${h.id}')"><i class="fas fa-edit"></i></button>
-                            <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteHouse('${h.id}')"><i class="fas fa-trash"></i></button>
+                            <button class="btn btn-sm btn-outline-primary border-0" onclick="editHouse('${id}')"><i class="fas fa-edit"></i></button>
+                            <button class="btn btn-sm btn-outline-danger border-0" onclick="deleteHouse('${id}')"><i class="fas fa-trash"></i></button>
                         </td>
                     </tr>`;
             });
@@ -706,6 +629,7 @@
         container.style.display = (container.style.display === "none" || container.style.display === "") ? "block" : "none";
     }
 
+    // --- SÉCURITÉ ---
     window.lockAllFields = function() {
         const elements = document.querySelectorAll('input, select, textarea, button:not(.navbar button):not(.navbar-toggler):not(.btn-sm):not(#btn-toggle-houses)');
         elements.forEach(el => {
@@ -715,7 +639,8 @@
             }
         });
         document.getElementById('lock-action-area').innerHTML = `<button id="unlock-trigger-btn" class="btn btn-danger btn-lg px-5 shadow" onclick="unlockProcess()"><i class="fas fa-unlock me-2"></i> DÉVERROUILLER</button>`;
-        document.getElementById('owner-delete-link').style.display = "none";
+        const delLink = document.getElementById('owner-delete-link');
+        if(delLink) delLink.style.display = "none";
     }
 
     window.unlockProcess = function() {
@@ -726,7 +651,8 @@
                 el.classList.remove('info-locked');
             });
             document.getElementById('lock-action-area').innerHTML = `<button class="btn btn-whatsapp btn-lg" onclick="saveAndLock()"><i class="fas fa-save me-2"></i> SAUVEGARDER & VERROUILLER</button>`;
-            document.getElementById('owner-delete-link').style.display = "inline";
+            const delLink = document.getElementById('owner-delete-link');
+            if(delLink) delLink.style.display = "inline";
         } else { alert("Code incorrect."); }
     }
 
@@ -735,10 +661,8 @@
     window.deleteHouse = function(id) {
         const code = prompt("Code PIN pour supprimer :");
         if(String(code) === String(masterCode)) {
-            houses = houses.filter(h => String(h.id) !== String(id));
-            localStorage.setItem('smartloc_houses', JSON.stringify(houses));
-            if(window.SmartSync) window.SmartSync.push('houses');
-            renderHouses();
+            const { db, ref, remove } = window.SmartSync;
+            remove(ref(db, `houses/${id}`)).then(() => alert("Bien supprimé."));
         } else { alert("Code incorrect."); }
     }
 

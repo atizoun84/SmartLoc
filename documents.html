@@ -275,7 +275,6 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
     import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
-    import { getStorage, ref as sRef, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
@@ -289,90 +288,60 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-    const storage = getStorage(app);
 
-    const COLLECTIONS = ['tenants', 'houses', 'payments', 'company', 'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants', 'owners', 'expenses'];
+    // Initialisation des variables globales
+    window.dataStore = {
+        tenants: [], owners: [], houses: [], payments: [], expenses: [], 
+        agency_withdrawals: [], company: {}, mastercode: "1234", commission_rate: 10
+    };
 
+    const COLLECTIONS = ['tenants', 'houses', 'payments', 'company', 'owners', 'expenses', 'agency_withdrawals', 'mastercode', 'commission_rate'];
+
+    // Écouteurs Cloud-First en temps réel
     COLLECTIONS.forEach(col => {
         onValue(ref(db, col), (snapshot) => {
             const data = snapshot.val();
-            if (data !== null) {
-                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                updateLocalVariables();
-                if(typeof refreshHistory === 'function' && currentTarget) refreshHistory();
-                loadBranding();
-            }
+            window.dataStore[col] = data || (col === 'company' ? {} : []);
+            
+            if(col === 'company') loadBranding();
+            if(currentTarget) refreshHistory();
         });
     });
 
-    window.SmartSync = {
-        push: (collectionName) => {
-            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-            if (localData !== null) set(ref(db, collectionName), localData);
-        },
-        // Suppression cloud forcée pour synchronisation universelle
-        deleteItem: (collectionName) => {
-             const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`)) || [];
-             set(ref(db, collectionName), localData);
-        },
-        uploadFile: async (fileList, type) => {
-            if(!fileList || fileList.length === 0) return;
-            const file = fileList; 
-            try {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                return new Promise((resolve, reject) => {
-                    reader.onload = (e) => {
-                        const img = new Image();
-                        img.src = e.target.result;
-                        img.onload = async () => {
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-                            const maxW = 400;
-                            const scale = maxW / img.width;
-                            canvas.width = maxW;
-                            canvas.height = img.height * scale;
-                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                            const compressed = canvas.toDataURL('image/jpeg', 0.8);
-
-                            const storageRef = sRef(storage, `agency_branding/${type}.jpg`);
-                            const snapshot = await uploadString(storageRef, compressed, 'data_url');
-                            const url = await getDownloadURL(snapshot.ref);
-
-                            let company = JSON.parse(localStorage.getItem('smartloc_company')) || {};
-                            company[type + 'Url'] = url;
-                            localStorage.setItem('smartloc_company', JSON.stringify(company));
-                            set(ref(db, 'company'), company);
-                            resolve(url);
-                        };
-                    };
-                    reader.onerror = reject;
-                });
-            } catch (err) {
-                console.error("Erreur Upload Cloud:", err);
-            }
-        }
-    };
-
+    // Statut de connexion
     onValue(ref(db, ".info/connected"), (snap) => {
         const statusContainer = document.getElementById('sync-status-container');
         if (statusContainer) {
             statusContainer.innerHTML = snap.val() === true 
-                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
-                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
+                ? `<span style="color: #25D366; font-weight: bold;"><i class="fas fa-cloud"></i> Cloud-First Connecté</span>`
+                : `<span style="color: #ffc107; font-weight: bold;"><i class="fas fa-cloud-slash"></i> Mode Hors-ligne</span>`;
         }
     });
+
+    // Export des fonctions d'écriture vers Firebase
+    window.cloudDelete = (collection, id) => {
+        // Pour les listes stockées en tableau (indexés par ID ou clés)
+        // Note: Cette logique dépend de si vos données sont des Objets ou des Tableaux dans Firebase
+        const collectionRef = ref(db, collection);
+        onValue(collectionRef, (snap) => {
+            const currentData = snap.val();
+            if(!currentData) return;
+            
+            if(Array.isArray(currentData)){
+                const newData = currentData.filter(item => item && String(item.id) !== String(id));
+                set(collectionRef, newData);
+            } else {
+                remove(ref(db, `${collection}/${id}`));
+            }
+        }, { onlyOnce: true });
+    };
 </script>
 
 <script>
+    // Sécurité session
     (function() {
         const session = JSON.parse(localStorage.getItem('smartloc_auth'));
         if (!session) { window.location.href = 'login.html'; return; }
-        if (session.role === 'agent') {
-            const pageActuelle = window.location.pathname.split("/").pop();
-            const pagesAutorisees = ['index.html', 'paiements.html', 'login.html', ''];
-            if (!pagesAutorisees.includes(pageActuelle)) { window.location.href = 'index.html'; }
-        }
     })();
 
     function logout() {
@@ -382,25 +351,13 @@
         }
     }
 
-    let tenants, owners, houses, payments, expenses, agencyWithdrawals;
-
-    function updateLocalVariables() {
-        tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
-        owners = JSON.parse(localStorage.getItem('smartloc_owners')) || [];
-        houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
-        payments = JSON.parse(localStorage.getItem('smartloc_payments')) || [];
-        expenses = JSON.parse(localStorage.getItem('smartloc_expenses')) || [];
-        agencyWithdrawals = JSON.parse(localStorage.getItem('smartloc_agency_withdrawals')) || [];
-    }
-    updateLocalVariables();
-    
     let currentMode = 'tenant'; 
     let currentTarget = null;
     let selectedIds = [];
     let lastFilteredData = [];
 
     function loadBranding() {
-        const company = JSON.parse(localStorage.getItem('smartloc_company')) || { name: "SmartLoc Agencies" };
+        const company = window.dataStore.company || { name: "SmartLoc Agencies" };
         document.getElementById('header-name-display').innerText = company.name || "SmartLoc";
         const headerLogo = document.getElementById('header-logo-display');
         if(headerLogo) headerLogo.src = "logo maison.png";
@@ -412,8 +369,12 @@
         resultsDiv.innerHTML = '';
         if(query.length < 1) return;
 
-        tenants.filter(t => (t.name || "").toLowerCase().includes(query)).forEach(t => {
-            const house = houses.find(h => String(h.id) === String(t.houseId));
+        let hasResults = false;
+
+        // Recherche Locataires
+        window.dataStore.tenants.filter(t => t && (t.name || "").toLowerCase().includes(query)).forEach(t => {
+            hasResults = true;
+            const house = window.dataStore.houses.find(h => h && String(h.id) === String(t.houseId));
             const div = document.createElement('div');
             div.className = 'result-item';
             div.innerHTML = `<i class="fas fa-user me-2 text-primary"></i> Locataire: <strong>${t.name}</strong> <br><small class="ms-4 text-muted">${house ? house.location : "Bien inconnu"}</small>`;
@@ -421,13 +382,19 @@
             resultsDiv.appendChild(div);
         });
 
-        owners.filter(o => (o.name || o.designation || "").toLowerCase().includes(query)).forEach(o => {
+        // Recherche Propriétaires
+        window.dataStore.owners.filter(o => o && (o.name || o.designation || "").toLowerCase().includes(query)).forEach(o => {
+            hasResults = true;
             const div = document.createElement('div');
             div.className = 'result-item';
             div.innerHTML = `<i class="fas fa-user-tie me-2 text-success"></i> Propriétaire: <strong>${o.name || o.designation || "Sans nom"}</strong>`;
             div.onclick = () => selectTarget('owner', o);
             resultsDiv.appendChild(div);
         });
+
+        if(!hasResults) {
+            resultsDiv.innerHTML = `<div class="result-item text-muted">Aucun locataire ou propriétaire ne correspond à ce nom</div>`;
+        }
     }
 
     function selectTarget(mode, target) {
@@ -466,16 +433,23 @@
     }
 
     function refreshHistory() {
+        if(!currentTarget) return;
         const tbody = document.getElementById('payment-history-body');
         const monthQuery = document.getElementById('month-search-input').value.toLowerCase();
         tbody.innerHTML = '';
         let data = [];
         const formatFullDate = (d) => new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+        const payments = window.dataStore.payments || [];
+        const houses = window.dataStore.houses || [];
+        const expenses = window.dataStore.expenses || [];
+        const agencyWithdrawals = window.dataStore.agency_withdrawals || [];
+        const tenants = window.dataStore.tenants || [];
+
         if (currentMode === 'tenant') {
             document.getElementById('history-title').innerText = "Paiements Loyer";
-            const house = houses.find(h => String(h.id) === String(currentTarget.houseId));
-            data = payments.filter(p => String(p.tenantId) === String(currentTarget.id))
+            const house = houses.find(h => h && String(h.id) === String(currentTarget.houseId));
+            data = payments.filter(p => p && String(p.tenantId) === String(currentTarget.id))
                            .map(p => {
                                const [y, m] = (p.monthKey || "0-0").split('-');
                                const label = p.monthKey ? new Date(y, m-1).toLocaleDateString('fr-FR', {month:'long', year:'numeric'}) : "Paiement";
@@ -484,15 +458,15 @@
         } 
         else if (currentMode === 'owner') {
             document.getElementById('history-title').innerText = "Flux du Propriétaire";
-            const ownerHouses = houses.filter(h => String(h.ownerId) === String(currentTarget.id));
-            const pms = payments.filter(p => tenants.some(t => String(t.id) === String(p.tenantId) && ownerHouses.some(h => String(h.id) === String(t.houseId))));
-            const exps = expenses.filter(e => ownerHouses.some(h => String(h.id) === String(e.houseId)));
+            const ownerHouses = houses.filter(h => h && String(h.ownerId) === String(currentTarget.id));
+            const pms = payments.filter(p => p && tenants.some(t => t && String(t.id) === String(p.tenantId) && ownerHouses.some(h => h && String(h.id) === String(t.houseId))));
+            const exps = expenses.filter(e => e && ownerHouses.some(h => h && String(h.id) === String(e.houseId)));
             data = [...pms.map(p => ({ id: p.id, originId: p.id, type: 'payment', label: "Loyer reçu", sub: formatFullDate(p.date), amount: p.amount, date: p.date })),
                     ...exps.map(e => ({ id: e.id, originId: e.id, type: 'expense', label: "Dépense", sub: e.label + " | " + formatFullDate(e.date), amount: -e.amount, date: e.date }))];
         }
         else if (currentMode === 'agency') {
             document.getElementById('history-title').innerText = "Gains de l'Agence";
-            const rate = parseFloat(localStorage.getItem('smartloc_commission_rate')) || 10;
+            const rate = parseFloat(window.dataStore.commission_rate) || 10;
             data = [...payments.map(p => ({ id: p.id, originId: p.id, type: 'payment', label: "Commission Loyer", sub: formatFullDate(p.date), amount: p.amount * (rate/100), date: p.date })),
                     ...agencyWithdrawals.map(w => ({ id: w.id, originId: w.id, type: 'withdrawal', label: "Retrait Gain", sub: formatFullDate(w.date), amount: -w.amount, date: w.date }))];
             
@@ -544,39 +518,29 @@
 
     window.deleteEntry = function(type, id, event) {
         if(event) event.stopPropagation();
-        const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
+        const masterCode = window.dataStore.mastercode || "1234";
         const code = prompt("Action Critique : Entrez le CODE MAÎTRE pour supprimer cette opération :");
         
         if (String(code) === String(masterCode)) {
-            if (!confirm("Confirmer la suppression définitive ?")) return;
+            if (!confirm("Confirmer la suppression définitive sur le CLOUD ?")) return;
 
-            let collectionToSync = "";
-            if (type === 'payment') {
-                payments = payments.filter(p => String(p.id) !== String(id));
-                localStorage.setItem('smartloc_payments', JSON.stringify(payments));
-                collectionToSync = 'payments';
-            } else if (type === 'expense') {
-                expenses = expenses.filter(e => String(e.id) !== String(id));
-                localStorage.setItem('smartloc_expenses', JSON.stringify(expenses));
-                collectionToSync = 'expenses';
-            } else if (type === 'withdrawal') {
-                agencyWithdrawals = agencyWithdrawals.filter(w => String(w.id) !== String(id));
-                localStorage.setItem('smartloc_agency_withdrawals', JSON.stringify(agencyWithdrawals));
-                collectionToSync = 'agency_withdrawals';
+            let collection = "";
+            if (type === 'payment') collection = 'payments';
+            else if (type === 'expense') collection = 'expenses';
+            else if (type === 'withdrawal') collection = 'agency_withdrawals';
+
+            if(window.cloudDelete) {
+                window.cloudDelete(collection, id);
+                alert("Opération supprimée du serveur.");
             }
-
-            updateLocalVariables();
-            if(window.SmartSync && collectionToSync) window.SmartSync.deleteItem(collectionToSync);
-            refreshHistory();
-            alert("Opération supprimée avec succès.");
         } else if (code !== null) {
-            alert("Code incorrect. Suppression annulée.");
+            alert("Code incorrect.");
         }
     }
 
     function generateDocument() {
         if(selectedIds.length === 0) return alert("Sélectionnez au moins une ligne.");
-        const company = JSON.parse(localStorage.getItem('smartloc_company')) || { name: "SmartLoc Agencies", pdgName: "Le Responsable", address: "Borgou, Bénin", whatsapp: "01 97 74 40 35" };
+        const company = window.dataStore.company || { name: "SmartLoc Agencies" };
         const itemsToPrint = lastFilteredData.filter(d => selectedIds.includes(String(d.id)));
         let docTitle = currentMode === 'tenant' ? "QUITTANCE DE LOYER" : (currentMode === 'owner' ? "ÉTAT DE REVERSEMENT" : "ÉTAT FINANCIER AGENCE");
         let total = itemsToPrint.reduce((s, i) => s + parseFloat(i.amount), 0);
@@ -627,7 +591,7 @@
             </div>
 
             <div class="mt-5 pt-5 text-center small text-muted border-top">
-                Document généré via SmartLoc Agencies - Logiciel de gestion immobilière professionnelle.
+                Document généré via SmartLoc Agencies - Système Cloud-First.
             </div>
         `;
     }
@@ -635,14 +599,12 @@
     function printReceipt() { if(selectedIds.length > 0) window.print(); }
 
     function copyForWhatsApp() {
-        const company = JSON.parse(localStorage.getItem('smartloc_company')) || { name: "SmartLoc" };
+        const company = window.dataStore.company || { name: "SmartLoc" };
         const itemsToPrint = lastFilteredData.filter(d => selectedIds.includes(String(d.id)));
         const total = itemsToPrint.reduce((s, i) => s + i.amount, 0);
         const text = `📄 *DOCUMENT ${company.name.toUpperCase()}*\n\nObjet: ${currentMode === 'tenant' ? 'Quittance' : 'État financier'}\nBénéficiaire: ${currentTarget.name || "Agence"}\nMontant: *${total.toLocaleString()} F CFA*\n\n_Généré le ${new Date().toLocaleDateString('fr-FR')}_`;
         navigator.clipboard.writeText(text).then(() => alert("Copié pour WhatsApp !"));
     }
-
-    document.addEventListener('DOMContentLoaded', loadBranding);
 </script>
 </body>
 </html>

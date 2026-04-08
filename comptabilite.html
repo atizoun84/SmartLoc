@@ -14,17 +14,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <script>
-        // --- SÉCURITÉ DE PAGE (SYSTÈME HARMONISÉ) ---
+        // --- SÉCURITÉ DE PAGE ---
         (function() {
             const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-            const currentPage = window.location.pathname.split("/").pop() || "index.html";
-
             if (!auth) {
                 window.location.href = 'login.html';
                 return;
             }
-
-            // Restriction d'accès stricte : Seul l'admin accède à la comptabilité
             if (auth.role === 'agent') {
                 alert("Accès Refusé : Cette section est réservée à l'administration.");
                 window.location.href = 'index.html';
@@ -43,7 +39,6 @@
 
         body { background-color: var(--wa-bg); font-family: 'Roboto', sans-serif; color: #333; }
         
-        /* Navbar Harmonisée avec Config */
         .navbar-custom {
             background: linear-gradient(135deg, var(--wa-dark-green), var(--wa-teal));
             color: white; padding: 0.8rem 1rem; border-bottom: 3px solid var(--wa-light-green);
@@ -84,7 +79,6 @@
         }
         .btn-logout { color: #ffc107 !important; font-weight: bold; }
 
-        /* Styles spécifiques Comptabilité */
         .stat-card { border: none; border-radius: 15px; transition: transform 0.3s; box-shadow: var(--shadow); padding: 12px !important; }
         .stat-card:hover { transform: translateY(-5px); }
         .icon-box { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
@@ -109,7 +103,6 @@
 
         footer { background: white; color: #6c757d; border-top: 1px solid #dee2e6; margin-top: 50px; font-size: 0.85rem; }
 
-        /* Style Bouton Installation PWA */
         #pwa-install-btn {
             position: fixed;
             bottom: 30px;
@@ -128,12 +121,12 @@
         }
         #pwa-install-btn:active { transform: scale(0.9); }
         #pwa-install-btn i { font-size: 1.2rem; margin-right: 10px; }
-        
-        /* Statut Sync */
         #sync-status-container { font-size: 0.8rem; font-weight: 500; }
     </style>
 </head>
 <body>
+
+<script type="module" src="sync.js"></script>
 
 <nav class="navbar navbar-expand-lg navbar-custom shadow-sm mb-4">
     <div class="container">
@@ -306,206 +299,93 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-    import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
-        authDomain: "beci-negoce.firebaseapp.com",
-        databaseURL: "https://beci-negoce-default-rtdb.europe-west1.firebasedatabase.app/",
-        projectId: "beci-negoce",
-        storageBucket: "beci-negoce.firebasestorage.app",
-        messagingSenderId: "622021997082",
-        appId: "1:622021997082:web:9bc402604c65c91f3857a3"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    const COLLECTIONS = [
-        'tenants', 'houses', 'payments', 'company', 'owners',
-        'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants', 'expenses', 'owner_reversements', 'commission_rate'
-    ];
-
-    COLLECTIONS.forEach(col => {
-        const dbRef = ref(db, col);
-        onValue(dbRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data !== null) {
-                localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                if(typeof window.renderAll === 'function') window.renderAll();
-            }
-        });
-    });
-
-    window.SmartSync = {
-        push: (collectionName) => {
-            const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-            if (localData !== null) {
-                set(ref(db, collectionName), localData);
-            }
-        }
-    };
-
-    onValue(ref(db, ".info/connected"), (snap) => {
-        const statusContainer = document.getElementById('sync-status-container');
-        if (statusContainer) {
-            statusContainer.innerHTML = snap.val() === true 
-                ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
-                : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
-        }
-    });
-</script>
-
 <script>
-    // --- PWA & UI ---
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(reg => console.log('SmartLoc SW enregistré !'))
-                .catch(err => console.log('Erreur SW:', err));
+    // --- VARIABLES GLOBALES CLOUD ---
+    let owners = [], tenants = [], payments = [], houses = [], expenses = [], agencyWithdrawals = [], ownerReversements = [];
+    let masterCode = "1234";
+    let currentCommission = 10;
+    let companyInfo = {};
+
+    // --- INITIALISATION CLOUD-FIRST ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const checkSync = setInterval(() => {
+            if (window.SmartSync) {
+                clearInterval(checkSync);
+                initCloudListeners();
+            }
+        }, 100);
+        applyMenuRestrictions();
+    });
+
+    function initCloudListeners() {
+        const S = window.SmartSync;
+
+        // Ecouteurs temps réel pour chaque collection
+        S.onValue(S.ref(S.db, 'owners'), (snap) => { owners = Object.values(snap.val() || {}); renderAll(); });
+        S.onValue(S.ref(S.db, 'tenants'), (snap) => { tenants = Object.values(snap.val() || {}); renderAll(); });
+        S.onValue(S.ref(S.db, 'payments'), (snap) => { payments = Object.values(snap.val() || {}); renderAll(); });
+        S.onValue(S.ref(S.db, 'houses'), (snap) => { 
+            houses = Object.values(snap.val() || {}); 
+            populateHouseSelect();
+            renderAll(); 
+        });
+        S.onValue(S.ref(S.db, 'expenses'), (snap) => { expenses = Object.values(snap.val() || {}); renderAll(); });
+        S.onValue(S.ref(S.db, 'agency_withdrawals'), (snap) => { agencyWithdrawals = Object.values(snap.val() || {}); renderAll(); });
+        S.onValue(S.ref(S.db, 'owner_reversements'), (snap) => { ownerReversements = Object.values(snap.val() || {}); renderAll(); });
+        S.onValue(S.ref(S.db, 'commission_rate'), (snap) => { currentCommission = parseFloat(snap.val() || 10); renderAll(); });
+        S.onValue(S.ref(S.db, 'mastercode'), (snap) => { masterCode = snap.val() || "1234"; });
+        S.onValue(S.ref(S.db, 'company'), (snap) => { 
+            companyInfo = snap.val() || {}; 
+            if(companyInfo.name) document.getElementById('header-name-display').innerText = companyInfo.name;
         });
     }
 
-    let deferredPrompt;
-    const installBtn = document.getElementById('pwa-install-btn');
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installBtn.style.display = 'flex';
-    });
-
-    installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') installBtn.style.display = 'none';
-            deferredPrompt = null;
-        }
-    });
-
-    // --- VARIABLES GLOBALES ---
-    let owners = [], tenants = [], payments = [], houses = [], expenses = [], agencyWithdrawals = [], ownerReversements = [];
-    let masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
-    let currentCommission = parseFloat(localStorage.getItem('smartloc_commission_rate')) || 10;
-
-    document.addEventListener('DOMContentLoaded', () => {
-        applyMenuRestrictions();
-        syncData();
-        loadBranding();
-        initApp();
-        renderAll();
-    });
-
-    function logout() {
-        if(confirm("Voulez-vous vous déconnecter ?")) {
-            localStorage.removeItem('smartloc_auth');
-            window.location.href = 'login.html';
-        }
-    }
-
-    function applyMenuRestrictions() {
-        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
-        if (auth && auth.role === 'agent') {
-            const authorized = ['index.html', 'paiements.html', 'recherche.html'];
-            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
-                const link = li.querySelector('a');
-                if (link && !link.classList.contains('btn-logout')) {
-                    const href = link.getAttribute('href');
-                    if (!authorized.includes(href)) li.remove();
-                }
-            });
-        }
-    }
-
-    function syncData() {
-        owners = JSON.parse(localStorage.getItem('smartloc_owners')) || [];
-        tenants = JSON.parse(localStorage.getItem('smartloc_tenants')) || [];
-        payments = JSON.parse(localStorage.getItem('smartloc_payments')) || [];
-        houses = JSON.parse(localStorage.getItem('smartloc_houses')) || [];
-        expenses = JSON.parse(localStorage.getItem('smartloc_expenses')) || [];
-        agencyWithdrawals = JSON.parse(localStorage.getItem('smartloc_agency_withdrawals')) || [];
-        ownerReversements = JSON.parse(localStorage.getItem('smartloc_owner_reversements')) || [];
-        currentCommission = parseFloat(localStorage.getItem('smartloc_commission_rate')) || 10;
-        masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
-    }
-
-    function loadBranding() {
-        const data = JSON.parse(localStorage.getItem('smartloc_company'));
-        if(data) document.getElementById('header-name-display').innerText = data.name;
-        document.getElementById('header-logo-display').src = "logo maison.png";
-    }
-
-    window.renderAll = function() { 
-        syncData(); 
+    function renderAll() {
         renderDashboard(); 
         renderJournal(); 
         renderExpenses(); 
-        renderOwnersReport(); 
+        renderOwnersReport();
     }
 
-    function verifySecurityCode() {
-        const inputCode = prompt("🔐 Sécurité : Entrez le code administrateur :");
-        if (String(inputCode) === String(masterCode)) return true;
-        alert("❌ Code incorrect.");
-        return false;
-    }
-
-    function changeCommissionRate() {
-        if (verifySecurityCode()) {
-            const newRate = prompt("Entrez le nouveau pourcentage (%) :", currentCommission);
-            if (newRate !== null && !isNaN(newRate)) {
-                currentCommission = parseFloat(newRate);
-                localStorage.setItem('smartloc_commission_rate', currentCommission);
-                if(window.SmartSync) window.SmartSync.push('commission_rate');
-                renderAll();
-            }
-        }
-    }
-
-    function initApp() {
+    // --- LOGIQUE MÉTIER (CLOUD) ---
+    function populateHouseSelect() {
         const houseSelect = document.getElementById('exp-house');
-        if(houseSelect) {
-            houseSelect.innerHTML = '<option value="">Choisir l\'unité...</option>';
-            houses.forEach(h => {
-                let units = []; try { units = JSON.parse(h.units); } catch(e) {}
+        if(!houseSelect) return;
+        houseSelect.innerHTML = '<option value="">Choisir l\'unité...</option>';
+        houses.forEach(h => {
+            let units = []; try { units = typeof h.units === 'string' ? JSON.parse(h.units) : h.units; } catch(e) {}
+            if(Array.isArray(units)) {
                 units.forEach(u => {
                     houseSelect.innerHTML += `<option value='${JSON.stringify({hId: h.id, uName: u.name})}'>${h.location} - ${u.name}</option>`;
                 });
-            });
-        }
-
-        const expForm = document.getElementById('expense-form');
-        if(expForm) {
-            expForm.onsubmit = (e) => {
-                e.preventDefault();
-                const houseVal = document.getElementById('exp-house').value;
-                if(!houseVal) return;
-                const sel = JSON.parse(houseVal);
-                expenses.push({
-                    id: Date.now().toString(),
-                    houseId: sel.hId,
-                    unitName: sel.uName,
-                    label: document.getElementById('exp-label').value,
-                    amount: parseFloat(document.getElementById('exp-amount').value),
-                    date: new Date().toISOString()
-                });
-                localStorage.setItem('smartloc_expenses', JSON.stringify(expenses));
-                if(window.SmartSync) window.SmartSync.push('expenses');
-                e.target.reset();
-                renderAll();
-            };
-        }
+            }
+        });
     }
+
+    // Gestion du formulaire de charges (Ecriture Cloud)
+    document.getElementById('expense-form').onsubmit = function(e) {
+        e.preventDefault();
+        const houseVal = document.getElementById('exp-house').value;
+        if(!houseVal) return;
+        const sel = JSON.parse(houseVal);
+        const S = window.SmartSync;
+        const newExpense = {
+            id: Date.now().toString(),
+            houseId: sel.hId,
+            unitName: sel.uName,
+            label: document.getElementById('exp-label').value,
+            amount: parseFloat(document.getElementById('exp-amount').value),
+            date: new Date().toISOString()
+        };
+        S.set(S.ref(S.db, `expenses/${newExpense.id}`), newExpense);
+        e.target.reset();
+    };
 
     function renderDashboard() {
         const totalTheoretical = tenants.reduce((sum, t) => sum + (parseFloat(t.monthlyRent) || 0), 0);
         const totalCollected = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-        
         const rawAgencyGain = totalCollected * (currentCommission / 100);
-        const totalWithdrawnByAgency = agencyWithdrawals.reduce((sum, w) => sum + w.amount, 0);
+        const totalWithdrawnByAgency = agencyWithdrawals.reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
         const totalAgencyAvailable = Math.max(0, rawAgencyGain - totalWithdrawnByAgency);
 
         let totalDue = 0;
@@ -540,44 +420,27 @@
                 const o = h ? owners.find(ow => String(ow.id) === String(h.ownerId)) : null;
                 const brut = parseFloat(p.amount);
                 const gainAg = brut * (currentCommission / 100);
-                return { 
-                    id: p.id, 
-                    label: t ? t.name : 'Inconnu', 
-                    detail: p.monthKey, 
-                    unit: t ? t.specificUnit : '---', 
-                    owner: o ? o.name : '---', 
-                    type: 'Revenu', 
-                    brut, 
-                    gainAg, 
-                    net: brut - gainAg, 
-                    date: p.date,
-                    operator: p.operator || '---' 
-                };
+                return { id: p.id, label: t ? t.name : 'Inconnu', detail: p.monthKey, unit: t ? t.specificUnit : '---', owner: o ? o.name : '---', type: 'Revenu', brut, gainAg, net: brut - gainAg, date: p.date, operator: p.operator || '---' };
             }),
             ...expenses.map(e => {
                 const h = houses.find(hs => String(hs.id) === String(e.houseId));
                 const o = h ? owners.find(ow => String(ow.id) === String(h.ownerId)) : null;
-                return { 
-                    id: e.id, 
-                    label: e.label, 
-                    detail: 'Charge', 
-                    unit: e.unitName, 
-                    owner: o ? o.name : '---', 
-                    type: 'Dépense', 
-                    brut: -e.amount, 
-                    gainAg: 0, 
-                    net: -e.amount, 
-                    date: e.date,
-                    operator: 'Système' 
-                };
+                return { id: e.id, label: e.label, detail: 'Charge', unit: e.unitName, owner: o ? o.name : '---', type: 'Dépense', brut: -e.amount, gainAg: 0, net: -e.amount, date: e.date, operator: 'Système' };
             })
         ].sort((a,b) => new Date(b.date) - new Date(a.date));
 
-        allFlux.filter(f => {
+        const filtered = allFlux.filter(f => {
             const matchSearch = f.label.toLowerCase().includes(search) || f.unit.toLowerCase().includes(search);
             const matchType = typeFilter === 'all' || f.type === typeFilter;
             return matchSearch && matchType;
-        }).forEach(f => {
+        });
+
+        if (filtered.length === 0 && search !== "") {
+            body.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-muted">Aucun locataire ou flux ne correspond à ce nom</td></tr>`;
+            return;
+        }
+
+        filtered.forEach(f => {
             body.innerHTML += `<tr>
                 <td><small>${new Date(f.date).toLocaleString('fr-FR')}</small></td>
                 <td><div class="fw-bold">${f.label}</div><small class="text-muted">${f.detail}</small></td>
@@ -608,20 +471,6 @@
         });
     }
 
-    function deleteEntry(id, type) {
-        if(!verifySecurityCode()) return;
-        if(type === 'Revenu') {
-            payments = payments.filter(p => String(p.id) !== String(id));
-            localStorage.setItem('smartloc_payments', JSON.stringify(payments));
-            if(window.SmartSync) window.SmartSync.push('payments');
-        } else {
-            expenses = expenses.filter(e => String(e.id) !== String(id));
-            localStorage.setItem('smartloc_expenses', JSON.stringify(expenses));
-            if(window.SmartSync) window.SmartSync.push('expenses');
-        }
-        renderAll();
-    }
-
     function renderOwnersReport() {
         const container = document.getElementById('owners-report-container');
         const search = document.getElementById('owner-search').value.toLowerCase();
@@ -646,7 +495,7 @@
 
             const dejaReverse = ownerReversements
                 .filter(r => String(r.ownerId) === String(o.id))
-                .reduce((sum, r) => sum + r.amount, 0);
+                .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
 
             const netDisponible = brutTotal - gainTotal - chargeTotal - dejaReverse;
 
@@ -671,6 +520,89 @@
         });
     }
 
+    // --- ACTIONS DE MODIFICATION (CLOUD) ---
+    function deleteEntry(id, type) {
+        if(!verifySecurityCode()) return;
+        const S = window.SmartSync;
+        const col = type === 'Revenu' ? 'payments' : 'expenses';
+        S.remove(S.ref(S.db, `${col}/${id}`));
+    }
+
+    function confirmReversement() {
+        const ownerId = document.getElementById('input-rev-owner-id').value;
+        const amount = parseFloat(document.getElementById('input-rev-amount').value);
+        const max = parseFloat(document.getElementById('input-rev-max').value);
+        if (!amount || amount <= 0 || amount > max) return;
+
+        if(verifySecurityCode()) {
+            const S = window.SmartSync;
+            const revId = Date.now().toString();
+            S.set(S.ref(S.db, `owner_reversements/${revId}`), {
+                id: revId,
+                ownerId: ownerId,
+                amount: amount,
+                date: new Date().toISOString()
+            });
+            bootstrap.Modal.getInstance(document.getElementById('reversementModal')).hide();
+        }
+    }
+
+    function validerRetraitAgence() {
+        const amount = parseFloat(document.getElementById('input-retrait-agence-val').value);
+        const totalCollected = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const available = (totalCollected * (currentCommission / 100)) - agencyWithdrawals.reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
+
+        if(!amount || amount <= 0 || amount > available) {
+            document.getElementById('retrait-agence-error').classList.remove('d-none');
+            return;
+        }
+
+        if(verifySecurityCode()) {
+            const S = window.SmartSync;
+            const withdrawalId = Date.now().toString();
+            S.set(S.ref(S.db, `agency_withdrawals/${withdrawalId}`), { amount, date: new Date().toISOString() });
+            bootstrap.Modal.getInstance(document.getElementById('retraitAgenceModal')).hide();
+        }
+    }
+
+    function changeCommissionRate() {
+        if (verifySecurityCode()) {
+            const newRate = prompt("Entrez le nouveau pourcentage (%) :", currentCommission);
+            if (newRate !== null && !isNaN(newRate)) {
+                const S = window.SmartSync;
+                S.set(S.ref(S.db, 'commission_rate'), parseFloat(newRate));
+            }
+        }
+    }
+
+    // --- OUTILS UI ---
+    function verifySecurityCode() {
+        const inputCode = prompt("🔐 Sécurité : Entrez le code administrateur :");
+        if (String(inputCode) === String(masterCode)) return true;
+        alert("❌ Code incorrect.");
+        return false;
+    }
+
+    function logout() {
+        if(confirm("Voulez-vous vous déconnecter ?")) {
+            localStorage.removeItem('smartloc_auth');
+            window.location.href = 'login.html';
+        }
+    }
+
+    function applyMenuRestrictions() {
+        const auth = JSON.parse(localStorage.getItem('smartloc_auth'));
+        if (auth && auth.role === 'agent') {
+            const authorized = ['index.html', 'paiements.html', 'recherche.html'];
+            document.querySelectorAll('#nav-menu .nav-item').forEach(li => {
+                const link = li.querySelector('a');
+                if (link && !link.classList.contains('btn-logout')) {
+                    if (!authorized.includes(link.getAttribute('href'))) li.remove();
+                }
+            });
+        }
+    }
+
     function ouvrirReversement(ownerId, netMax) {
         const owner = owners.find(o => String(o.id) === String(ownerId));
         const content = document.getElementById('modal-rev-content');
@@ -682,72 +614,19 @@
             </div>
             <div class="mb-3">
                 <label class="form-label fw-bold small">Montant à reverser (F)</label>
-                <input type="number" id="input-rev-amount" class="form-control form-control-lg text-center fw-bold" 
-                       value="${netMax}" max="${netMax}" min="1">
+                <input type="number" id="input-rev-amount" class="form-control form-control-lg text-center fw-bold" value="${netMax}" max="${netMax}" min="1">
                 <input type="hidden" id="input-rev-owner-id" value="${ownerId}">
                 <input type="hidden" id="input-rev-max" value="${netMax}">
                 <div id="rev-error" class="text-danger small mt-2 d-none">Le montant dépasse le solde disponible.</div>
-            </div>
-        `;
-        const modal = new bootstrap.Modal(document.getElementById('reversementModal'));
-        modal.show();
-    }
-
-    function confirmReversement() {
-        const ownerId = document.getElementById('input-rev-owner-id').value;
-        const amount = parseFloat(document.getElementById('input-rev-amount').value);
-        const max = parseFloat(document.getElementById('input-rev-max').value);
-
-        if (!amount || amount <= 0) return;
-        if (amount > max) {
-            document.getElementById('rev-error').classList.remove('d-none');
-            return;
-        }
-
-        if(verifySecurityCode()) {
-            ownerReversements.push({
-                id: Date.now().toString(),
-                ownerId: ownerId,
-                amount: amount,
-                date: new Date().toISOString()
-            });
-            localStorage.setItem('smartloc_owner_reversements', JSON.stringify(ownerReversements));
-            if(window.SmartSync) window.SmartSync.push('owner_reversements');
-            bootstrap.Modal.getInstance(document.getElementById('reversementModal')).hide();
-            renderAll();
-        }
+            </div>`;
+        new bootstrap.Modal(document.getElementById('reversementModal')).show();
     }
 
     function ouvrirModalRetraitAgence() {
         const totalCollected = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-        const rawAgencyGain = totalCollected * (currentCommission / 100);
-        const totalWithdrawnByAgency = agencyWithdrawals.reduce((sum, w) => sum + w.amount, 0);
-        const available = Math.max(0, rawAgencyGain - totalWithdrawnByAgency);
-        
+        const available = (totalCollected * (currentCommission / 100)) - agencyWithdrawals.reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
         document.getElementById('max-retrait-agence-label').innerText = available.toLocaleString() + ' F';
-        const modal = new bootstrap.Modal(document.getElementById('retraitAgenceModal'));
-        modal.show();
-    }
-
-    function validerRetraitAgence() {
-        const amount = parseFloat(document.getElementById('input-retrait-agence-val').value);
-        if(!amount || amount <= 0) return;
-
-        const totalCollected = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-        const available = (totalCollected * (currentCommission / 100)) - agencyWithdrawals.reduce((sum, w) => sum + w.amount, 0);
-
-        if(amount > available) {
-            document.getElementById('retrait-agence-error').classList.remove('d-none');
-            return;
-        }
-
-        if(verifySecurityCode()) {
-            agencyWithdrawals.push({ amount, date: new Date().toISOString() });
-            localStorage.setItem('smartloc_agency_withdrawals', JSON.stringify(agencyWithdrawals));
-            if(window.SmartSync) window.SmartSync.push('agency_withdrawals');
-            bootstrap.Modal.getInstance(document.getElementById('retraitAgenceModal')).hide();
-            renderAll();
-        }
+        new bootstrap.Modal(document.getElementById('retraitAgenceModal')).show();
     }
 </script>
 </body>

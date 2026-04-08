@@ -139,8 +139,7 @@
             <div class="mb-3">
                 <label class="form-label fw-bold small">Rôle Utilisateur</label>
                 <select id="userRole" class="form-select" required>
-                    <option value="">Sélectionnez un profil</option>
-                    <option value="pdg">PDG / Administrateur</option>
+                    <option value="">Chargement des profils...</option>
                 </select>
             </div>
             <div class="mb-4">
@@ -167,7 +166,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyABuovuwU7mft93kQoXo6tqAVWhAZ4IlpA",
@@ -182,114 +181,58 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        const COLLECTIONS = [
-            'tenants', 'houses', 'payments', 'company', 
-            'employees', 'mastercode', 'agency_withdrawals', 'archived_tenants'
-        ];
-
-        // Écoute du Cloud vers le Local
-        COLLECTIONS.forEach(col => {
-            const dbRef = ref(db, col);
-            onValue(dbRef, (snapshot) => {
-                const data = snapshot.val();
-                if (data !== null) {
-                    localStorage.setItem(`smartloc_${col}`, JSON.stringify(data));
-                    
-                    // Rafraîchissement dynamique des éléments de la page de login
-                    if (col === 'company') loadAgencyData();
-                    if (col === 'employees') loadRoles();
-                }
-            });
-        });
-
-        // Logique d'écriture
-        window.SmartSync = {
-            push: (collectionName) => {
-                const localData = JSON.parse(localStorage.getItem(`smartloc_${collectionName}`));
-                if (localData !== null) {
-                    set(ref(db, collectionName), localData);
-                }
-            }
+        // Variables globales temporaires pour la vérification sans localStorage
+        window.cloudData = {
+            employees: [],
+            mastercode: "1234"
         };
 
-        // Gestion du statut visuel
-        onValue(ref(db, ".info/connected"), (snap) => {
-            const statusContainer = document.getElementById('sync-status-container');
-            if (statusContainer) {
-                statusContainer.innerHTML = snap.val() === true 
-                    ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Synchronisé</span>`
-                    : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
+        // --- ÉCOUTEURS CLOUD-FIRST (Source de Vérité Directe) ---
+
+        // 1. Chargement de la Compagnie & Logo
+        onValue(ref(db, 'company'), (snapshot) => {
+            const companyData = snapshot.val();
+            if (companyData) {
+                const brandName = document.getElementById('display-brand-name');
+                brandName.innerHTML = `<i class="bi bi-house-lock-fill me-2"></i>${companyData.name || 'SmartLoc'}`;
+                // Le logo reste en localStorage pour un affichage immédiat au chargement car c'est un asset lourd
+                if (companyData.logo) localStorage.setItem('smartloc_logo', companyData.logo); 
             }
         });
-    </script>
 
-    <script>
-        // --- ENREGISTREMENT DU SERVICE WORKER (PWA) ---
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                    .then(reg => console.log('SmartLoc SW enregistré !'))
-                    .catch(err => console.log('Erreur SW:', err));
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            localStorage.removeItem('smartloc_auth');
-            loadAgencyData();
-            loadRoles();
-        });
-
-        function loadAgencyData() {
-            const companyData = JSON.parse(localStorage.getItem('smartloc_company'));
-            const logoData = localStorage.getItem('smartloc_logo');
-            const brandContainer = document.getElementById('logo-container');
-            const brandName = document.getElementById('display-brand-name');
-
-            if (companyData && companyData.name) {
-                brandName.innerHTML = `<i class="bi bi-house-lock-fill me-2"></i>${companyData.name}`;
-            }
-
-            const oldImg = brandContainer.querySelector('.dynamic-logo');
-            if(oldImg) oldImg.remove();
-
-            if (logoData) {
-                const img = document.createElement('img');
-                img.src = logoData;
-                img.alt = "Logo Agence";
-                img.className = "dynamic-logo";
-                brandContainer.prepend(img);
-            }
-        }
-
-        function loadRoles() {
+        // 2. Chargement des Rôles (Employés)
+        onValue(ref(db, 'employees'), (snapshot) => {
+            const employees = snapshot.val() || [];
+            window.cloudData.employees = Object.values(employees);
+            
             const select = document.getElementById('userRole');
-            const employees = JSON.parse(localStorage.getItem('smartloc_employees')) || [];
+            select.innerHTML = `<option value="">Sélectionnez un profil</option>
+                                <option value="pdg">PDG / Administrateur</option>`;
             
-            select.innerHTML = `
-                <option value="">Sélectionnez un profil</option>
-                <option value="pdg">PDG / Administrateur</option>
-            `;
-            
-            employees.forEach(emp => {
+            window.cloudData.employees.forEach(emp => {
                 const opt = document.createElement('option');
                 opt.value = `emp_${emp.id}`;
                 opt.textContent = `Agent : ${emp.nom}`;
                 select.appendChild(opt);
             });
-        }
+        });
 
-        function togglePassword() {
-            const passInput = document.getElementById('password');
-            const icon = document.getElementById('toggleIcon');
-            if (passInput.type === "password") {
-                passInput.type = "text";
-                icon.classList.replace('bi-eye', 'bi-eye-slash');
-            } else {
-                passInput.type = "password";
-                icon.classList.replace('bi-eye-slash', 'bi-eye');
+        // 3. Chargement du MasterCode
+        onValue(ref(db, 'mastercode'), (snapshot) => {
+            if (snapshot.exists()) window.cloudData.mastercode = snapshot.val();
+        });
+
+        // 4. Statut de connexion
+        onValue(ref(db, ".info/connected"), (snap) => {
+            const statusContainer = document.getElementById('sync-status-container');
+            if (statusContainer) {
+                statusContainer.innerHTML = snap.val() === true 
+                    ? `<span style="color: #25D366;"><i class="fas fa-cloud"></i> Connecté</span>`
+                    : `<span style="color: #ffc107;"><i class="fas fa-cloud-slash"></i> Hors-ligne</span>`;
             }
-        }
+        });
 
+        // Gestion du formulaire de login (Utilise les données Cloud en mémoire)
         document.getElementById('loginForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const roleValue = document.getElementById('userRole').value;
@@ -299,17 +242,15 @@
             let isAuthenticated = false;
             let userSession = {};
 
-            const masterCode = localStorage.getItem('smartloc_mastercode') || "1234";
             if (roleValue === "pdg") {
-                if (String(inputPass) === String(masterCode)) {
+                if (String(inputPass) === String(window.cloudData.mastercode)) {
                     isAuthenticated = true;
                     userSession = { role: 'admin', name: 'PDG' };
                 }
             } 
             else if (roleValue.startsWith('emp_')) {
                 const empId = roleValue.replace('emp_', '');
-                const employees = JSON.parse(localStorage.getItem('smartloc_employees')) || [];
-                const foundEmp = employees.find(e => String(e.id) === empId);
+                const foundEmp = window.cloudData.employees.find(e => String(e.id) === empId);
                 
                 if (foundEmp && String(inputPass) === String(foundEmp.code)) {
                     isAuthenticated = true;
@@ -324,6 +265,30 @@
                 error.classList.remove('d-none');
             }
         });
+    </script>
+
+    <script>
+        // PWA et UI Basique
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.log('SW error:', err));
+            });
+        }
+
+        function togglePassword() {
+            const passInput = document.getElementById('password');
+            const icon = document.getElementById('toggleIcon');
+            if (passInput.type === "password") {
+                passInput.type = "text";
+                icon.classList.replace('bi-eye', 'bi-eye-slash');
+            } else {
+                passInput.type = "password";
+                icon.classList.replace('bi-eye-slash', 'bi-eye');
+            }
+        }
+        
+        // Nettoyage session au chargement
+        localStorage.removeItem('smartloc_auth');
     </script>
 </body>
 </html>
